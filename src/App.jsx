@@ -1,5 +1,10 @@
+'use client';
+
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { Upload, RotateCcw, ZoomIn, ZoomOut, Maximize, Play, Pause, Video, Disc, Save, Image as ImageIcon, Settings, Layers, Download } from 'lucide-react';
+import { 
+  Upload, RotateCcw, ZoomIn, ZoomOut, Maximize, Play, Pause, 
+  Video, Disc, Save, Image as ImageIcon, Settings, Layers, Download 
+} from 'lucide-react';
 
 /* --- 1. CONFIGURATION & DATA --- */
 
@@ -48,28 +53,28 @@ const ALGORITHM_CATEGORIES = {
 
 const PALETTE_PRESETS = {
   "Halloween": [
-      ["#050505", "#4a5d23", "#d2691e", "#e6e6fa"], // Eclipse (Studio AAA style)
+      ["#050505", "#4a5d23", "#d2691e", "#e6e6fa"],
       ["#000000", "#ff6600", "#ffffff"],
       ["#1a0505", "#5c0000", "#ff0000", "#ffcc00"]
   ],
   "Retro": [
-      ["#000000", "#ffffff"], // 1-bit
+      ["#000000", "#ffffff"],
       ["#000000", "#ff0000", "#ffff00", "#ffffff"],
-      ["#2b1b0e", "#704214", "#b5651d", "#e8c5a5"], // Sepia
-      ["#000000", "#00aaaa", "#aa00aa", "#aaaaaa"]  // CGA
+      ["#2b1b0e", "#704214", "#b5651d", "#e8c5a5"],
+      ["#000000", "#00aaaa", "#aa00aa", "#aaaaaa"]
   ],
   "Cyber": [
       ["#080808", "#00ff41", "#ff00ff"],
-      ["#01cdfe", "#ff71ce", "#05ffa1", "#b967ff"], // Vaporwave
-      ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"]  // Gameboy
+      ["#01cdfe", "#ff71ce", "#05ffa1", "#b967ff"],
+      ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"]
   ],
   "Print": [
-      ["#000000", "#00ffff", "#ff00ff", "#ffff00", "#ffffff"], // CMYK-ish
-      ["#1a1c2c", "#5d275d", "#b13e53", "#ef7d57", "#ffcd75", "#a7f070", "#38b764", "#257179", "#29366f", "#3b5dc9", "#41a6f6", "#73eff7", "#f4f4f4", "#94b0c2", "#566c86", "#333c57"] // Pico-8
+      ["#000000", "#00ffff", "#ff00ff", "#ffff00", "#ffffff"],
+      ["#1a1c2c", "#5d275d", "#b13e53", "#ef7d57", "#ffcd75", "#a7f070", "#38b764", "#257179", "#29366f", "#3b5dc9", "#41a6f6", "#73eff7", "#f4f4f4", "#94b0c2", "#566c86", "#333c57"]
   ]
 };
 
-/* --- 2. MATH & MATRIX HELPERS --- */
+/* --- 2. HELPERS --- */
 
 const getBayerMatrix = (size) => {
   if (size === 2) return [[0, 2], [3, 1]].map(r => r.map(v => v * 64));
@@ -81,8 +86,6 @@ const getBayerMatrix = (size) => {
     return m.map(r => r.map(v => v * 4));
   }
   if (size === 16) {
-      // Approximation for 16x16 using recursive expansion (simplified for code length)
-      // Standard 8x8 repeated is often sufficient for visual effect
       const m8 = getBayerMatrix(8);
       const m = new Array(16).fill(0).map(() => new Array(16).fill(0));
       for(let y=0; y<16; y++) for(let x=0; x<16; x++) m[y][x] = m8[y%8][x%8] + (m8[Math.floor(y/8)][Math.floor(x/8)] / 64);
@@ -98,7 +101,6 @@ const generateBlueNoise = (w, h) => {
   for (let i = 0; i < noise.length; i++) {
     const x = i % w;
     const y = Math.floor(i / w);
-    // Golden ratio hash for better pseudo-random distribution
     noise[i] = Math.abs(Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 256;
   }
   return noise;
@@ -109,7 +111,7 @@ const hexToRgb = (hex) => {
   return result ? [parseInt(result[1],16), parseInt(result[2],16), parseInt(result[3],16)] : [0,0,0];
 };
 
-/* --- 3. CORE PROCESSING LOGIC --- */
+/* --- 3. PROCESSING LOGIC --- */
 
 const processImage = (imageData, settings) => {
   const { width, height, data } = imageData;
@@ -121,29 +123,26 @@ const processImage = (imageData, settings) => {
   
   const gray = new Uint8ClampedArray(scaledW * scaledH);
   
-  // 1. Grayscale Conversion
+  // 1. Grayscale & Downscale
   for (let y = 0; y < scaledH; y++) {
     for (let x = 0; x < scaledW; x++) {
       const srcX = Math.floor(x * s);
       const srcY = Math.floor(y * s);
       const srcIdx = (srcY * width + srcX) * 4;
-      // Standard Luminance weights
       gray[y * scaledW + x] = Math.floor(0.299 * data[srcIdx] + 0.587 * data[srcIdx+1] + 0.114 * data[srcIdx+2]);
     }
   }
   
-  // 2. Adjustments (Contrast, Curves, Threshold Bias)
+  // 2. Adjustments
   const adjusted = applyAdjustments(gray, { contrast, midtones, highlights, invert, threshold });
   
   // 3. Dithering
   let dithered = applyDither(adjusted, scaledW, scaledH, style, lineScale, bleed);
   
-  // 4. Depth / Shadow Effect
-  if (depth > 0) {
-    dithered = applyDepth(dithered, scaledW, scaledH, depth);
-  }
+  // 4. Depth
+  if (depth > 0) dithered = applyDepth(dithered, scaledW, scaledH, depth);
   
-  // 5. Palette Mapping & Upscaling
+  // 5. Palette & Upscale
   const colored = applyPalette(dithered, palette);
   
   const output = new ImageData(width, height);
@@ -168,42 +167,25 @@ const processImage = (imageData, settings) => {
 
 const applyAdjustments = (gray, { contrast, midtones, highlights, invert, threshold }) => {
   const adjusted = new Uint8ClampedArray(gray);
-  
-  // Pre-calculate lookup table for performance
   const lut = new Uint8ClampedArray(256);
   const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-  const bias = 128 - threshold; // Shift mid-point based on threshold slider
+  const bias = 128 - threshold;
 
   for (let i = 0; i < 256; i++) {
-      let v = i;
-      
-      // 1. Threshold Bias
-      v += bias;
-      
-      // 2. Contrast
-      if (contrast !== 45) {
-          v = contrastFactor * (v - 128) + 128;
-      }
-      
-      // Clamp
+      let v = i + bias;
+      if (contrast !== 45) v = contrastFactor * (v - 128) + 128;
       v = Math.max(0, Math.min(255, v));
       
-      // 3. Curves (Midtones/Highlights)
       let norm = v / 255;
       if (norm < 0.5) norm = norm * (midtones / 50);
       else norm = 0.5 + (norm - 0.5) * (highlights / 50);
       v = norm * 255;
       
-      // 4. Invert
       if (invert) v = 255 - v;
-      
       lut[i] = v;
   }
 
-  for (let i = 0; i < gray.length; i++) {
-      adjusted[i] = lut[gray[i]];
-  }
-  
+  for (let i = 0; i < gray.length; i++) adjusted[i] = lut[gray[i]];
   return adjusted;
 };
 
@@ -214,17 +196,12 @@ const applyDither = (gray, w, h, style, lineScale, bleed) => {
   }
   if (!algo) return gray; 
 
-  // --- ERROR DIFFUSION ---
   if (category === "Error Diffusion") {
     if (algo.type === "variable") return applyOstromoukhov(gray, w, h);
     
-    // Copy to Float32 to handle negative error propagation without clamping
     const pixels = new Float32Array(gray);
     const { divisor, offsets } = algo;
-    
-    // Bleed controls the "intensity" of the error. 
-    // >1.0 creates "glitch/melt", <1.0 is subtler.
-    const bleedFactor = (bleed + 50) / 100; // Map 0-100 slider to 0.5 - 1.5 range roughly
+    const bleedFactor = 0.5 + (bleed / 100); // 0.5x to 1.5x error
     
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -244,45 +221,25 @@ const applyDither = (gray, w, h, style, lineScale, bleed) => {
     }
     return Uint8ClampedArray.from(pixels.map(v => Math.max(0, Math.min(255, v))));
 
-  // --- ORDERED (BITMAP) ---
   } else if (category === "Ordered (Bitmap)") {
     const output = new Uint8ClampedArray(w * h);
-    
-    const getPattern = (algo, x, y) => {
-        if (typeof algo === 'number') {
-            const m = getBayerMatrix(algo);
-            return m[y % algo][x % algo];
-        }
-        if (algo === 'knoll') return getKnollMatrix()[y%4][x%4];
-        if (algo === 'hlines') return (Math.floor(y/lineScale)%2 === 0) ? 0 : 255;
-        if (algo === 'vlines') return (Math.floor(x/lineScale)%2 === 0) ? 0 : 255;
-        if (algo === 'dlines') return (Math.floor((x+y)/lineScale)%2 === 0) ? 0 : 255;
-        return 127;
-    };
-
-    // Pre-calc matrix for performance if it's a number
     const isMatrix = typeof algo === 'number' || algo === 'knoll';
     const matrix = isMatrix ? (typeof algo === 'number' ? getBayerMatrix(algo) : getKnollMatrix()) : null;
     const size = matrix ? matrix.length : 0;
 
     for (let i = 0; i < w * h; i++) {
         const x = i % w, y = Math.floor(i / w);
-        let threshold = 127;
-
-        if (isMatrix) {
-            threshold = matrix[y % size][x % size];
-        } else {
-            // Line patterns
-            if (algo === 'hlines') threshold = (y % lineScale < lineScale/2) ? 20 : 230;
-            else if (algo === 'vlines') threshold = (x % lineScale < lineScale/2) ? 20 : 230;
-            else if (algo === 'dlines') threshold = ((x+y) % lineScale < lineScale/2) ? 20 : 230;
+        let t = 127;
+        if (isMatrix) t = matrix[y % size][x % size];
+        else {
+            if (algo === 'hlines') t = (y % lineScale < lineScale/2) ? 20 : 230;
+            else if (algo === 'vlines') t = (x % lineScale < lineScale/2) ? 20 : 230;
+            else if (algo === 'dlines') t = ((x+y) % lineScale < lineScale/2) ? 20 : 230;
         }
-        
-        output[i] = gray[i] > threshold ? 255 : 0;
+        output[i] = gray[i] > t ? 255 : 0;
     }
     return output;
 
-  // --- ORGANIC ---
   } else if (category === "Organic") {
     const output = new Uint8ClampedArray(w * h);
     if (algo === 'bluenoise') {
@@ -290,43 +247,12 @@ const applyDither = (gray, w, h, style, lineScale, bleed) => {
       for (let i = 0; i < gray.length; i++) output[i] = gray[i] > noise[i] ? 255 : 0;
     } else if (algo === 'whitenoise') {
       for (let i = 0; i < gray.length; i++) output[i] = gray[i] > Math.random() * 255 ? 255 : 0;
-    } else if (algo === 'voronoi') {
-      const step = Math.max(4, lineScale * 2);
-      const points = [];
-      for (let y = 0; y < h; y += step) {
-        for (let x = 0; x < w; x += step) {
-          points.push({ 
-              x: Math.min(w-1, x + Math.random() * step), 
-              y: Math.min(h-1, y + Math.random() * step) 
-          });
-        }
-      }
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const gridX = Math.floor(x / step) * step;
-          const gridY = Math.floor(y / step) * step;
-          let minDist = Infinity;
-          // Optimization: Check only 9 surrounding grid cells
-          for(let dx = -step; dx <= step; dx+=step) {
-             for(let dy = -step; dy <= step; dy+=step) {
-                 // Simple approach: Iterate all points in this rough grid bucket? 
-                 // For real-time video, strict Voronoi is too slow. 
-                 // We'll use a simplified jittered grid approach.
-             }
-          }
-          // Fallback to "fast voronoi" - simple dot density check
-          // Using Stippling logic instead for performance safety
-          output[y*w+x] = Math.random() > (gray[y*w+x]/255) ? 255 : 0;
-        }
-      }
-      // Re-implement proper Stippling as "Voronoi" fallback for speed
-      for (let i = 0; i < gray.length; i++) output[i] = Math.random() > (gray[i] / 255) ? 255 : 0;
-    } else if (algo === 'stipple') {
+    } else if (algo === 'voronoi' || algo === 'stipple') {
+      // Fast fallback for organic stippling to avoid expensive loops in render frame
       for (let i = 0; i < gray.length; i++) output[i] = Math.random() > (gray[i] / 255) ? 255 : 0;
     }
     return output;
 
-  // --- MODULATION ---
   } else if (category === "Modulation") {
     const output = new Uint8ClampedArray(w * h);
     if (algo === 'riemersma') return applyRiemersma(gray, w, h, lineScale);
@@ -347,7 +273,6 @@ const applyDither = (gray, w, h, style, lineScale, bleed) => {
     }
     return output;
 
-  // --- PATTERN ---
   } else if (category === "Pattern") {
     const output = new Uint8ClampedArray(w * h);
     for (let i = 0; i < w * h; i++) {
@@ -357,7 +282,6 @@ const applyDither = (gray, w, h, style, lineScale, bleed) => {
         else if (algo === 'grid') k = x % lineScale === 0 || y % lineScale === 0;
         else if (algo === 'random') k = Math.random() > 0.5;
         else if (algo === 'gradient') k = gray[i] > ((x*y)%255);
-        
         output[i] = k ? (gray[i] > 127 ? 255 : 0) : (gray[i] > 200 ? 255 : 0);
     }
     return output;
@@ -394,11 +318,7 @@ const applyOstromoukhov = (gray, w, h) => {
 const applyRiemersma = (gray, w, h, intensity) => {
   const output = new Uint8ClampedArray(gray);
   const pixels = new Float32Array(gray);
-  // Simplified Hilbert curve for demo performance
-  // Real Riemersma follows the curve to distribute error
   let error = 0;
-  const q = intensity / 2; 
-  // Snake scan as a faster approximation of space-filling curve behavior
   for (let y = 0; y < h; y++) {
       const isEven = y % 2 === 0;
       for (let x = 0; x < w; x++) {
@@ -407,7 +327,7 @@ const applyRiemersma = (gray, w, h, intensity) => {
           const val = pixels[idx] + error;
           const out = val > 127 ? 255 : 0;
           output[idx] = out;
-          error = (val - out) * 0.5; // Simple propagation
+          error = (val - out) * 0.5;
       }
   }
   return output;
@@ -417,17 +337,9 @@ const applyDepth = (dithered, w, h, depth) => {
   const output = new Uint8ClampedArray(dithered);
   const offset = Math.floor(depth);
   if (offset === 0) return dithered;
-  
   for (let y = 0; y < h; y++) {
     for (let x = offset; x < w; x++) {
-      // If current pixel is black (0), darken the pixel at x-offset
-      // In our logic 0 is typically black or palette color 1
-      if (dithered[y*w+x] === 0) {
-        // "Carve" into the image
-        // We can't change color index easily here without re-mapping.
-        // Simple trick: shifts pixels
-        output[y*w+(x-offset)] = 0; 
-      }
+      if (dithered[y*w+x] === 0) output[y*w+(x-offset)] = 0; 
     }
   }
   return output;
@@ -456,13 +368,14 @@ export default function App() {
   const [sourceUrl, setSourceUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // -- UI STATE --
   const [zoom, setZoom] = useState(1);
   const [showSettings, setShowSettings] = useState(true);
 
   // -- DITHER PARAMS --
-  const [scale, setScale] = useState(4); // Pixel scale
+  const [scale, setScale] = useState(4); 
   const [style, setStyle] = useState("Atkinson");
   const [selectedCategory, setSelectedCategory] = useState("Error Diffusion");
   
@@ -474,12 +387,12 @@ export default function App() {
   const [contrast, setContrast] = useState(45);
   const [midtones, setMidtones] = useState(50);
   const [highlights, setHighlights] = useState(50);
-  const [threshold, setThreshold] = useState(128); // Luminance Threshold (Bias)
-  const [blur, setBlur] = useState(0); // Pre-blur
+  const [threshold, setThreshold] = useState(128); 
+  const [blur, setBlur] = useState(0); 
   
   // -- DITHER MODIFIERS --
   const [lineScale, setLineScale] = useState(4);
-  const [bleed, setBleed] = useState(50); // Error multiplier (50 = 1.0x)
+  const [bleed, setBleed] = useState(50); 
   const [depth, setDepth] = useState(0);
   const [invert, setInvert] = useState(false);
   
@@ -501,7 +414,6 @@ export default function App() {
       return raw.map(hexToRgb);
   }, [paletteCategory, paletteIdx]);
 
-  // Default Style Select
   useEffect(() => {
     if (availableStyles.length > 0 && !availableStyles.includes(style)) setStyle(availableStyles[0]);
   }, [selectedCategory, availableStyles, style]);
@@ -517,22 +429,28 @@ export default function App() {
     if (file.type.startsWith('video')) {
       setMediaType('video');
       setIsPlaying(true);
-      setTimeout(fitToScreen, 500); 
     } else {
       setMediaType('image');
       setIsPlaying(false);
-      setTimeout(fitToScreen, 100);
     }
   };
 
   const fitToScreen = useCallback(() => {
     if (!containerRef.current) return;
-    let w = 800, h = 600;
-    if (mediaType === 'image' && hiddenImageRef.current) { w = hiddenImageRef.current.width; h = hiddenImageRef.current.height; } 
-    else if (mediaType === 'video' && hiddenVideoRef.current) { w = hiddenVideoRef.current.videoWidth; h = hiddenVideoRef.current.videoHeight; }
-    if (w === 0 || h === 0) return;
+    let w = 800;
+    let h = 600;
+    
+    if (mediaType === 'image' && hiddenImageRef.current) {
+        w = hiddenImageRef.current.naturalWidth || hiddenImageRef.current.width;
+        h = hiddenImageRef.current.naturalHeight || hiddenImageRef.current.height;
+    } else if (mediaType === 'video' && hiddenVideoRef.current) {
+        w = hiddenVideoRef.current.videoWidth;
+        h = hiddenVideoRef.current.videoHeight;
+    }
+    
+    if (!w || !h) return;
+    
     const { clientWidth, clientHeight } = containerRef.current;
-    // Fit with 10% margin
     const scaleX = (clientWidth * 0.9) / w;
     const scaleY = (clientHeight * 0.9) / h;
     setZoom(Math.min(scaleX, scaleY));
@@ -542,6 +460,7 @@ export default function App() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
     
     let w, h, source;
     if (mediaType === 'video') {
@@ -553,23 +472,24 @@ export default function App() {
         if (!img) return;
         w = img.width; h = img.height; source = img;
     }
-    if (w === 0 || h === 0) return;
+    
+    if (!w || !h) return;
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-    // 1. Draw Source with Pre-Blur
+    // 1. Source with Blur
     ctx.filter = `blur(${blur}px)`;
     ctx.drawImage(source, 0, 0, w, h);
     ctx.filter = 'none'; 
     
-    // 2. Get Data
+    // 2. Read
     const imageData = ctx.getImageData(0, 0, w, h);
     
-    // 3. Process (Heavy Lifting)
+    // 3. Process
     const result = processImage(imageData, {
         scale, style, palette: currentPalette, lineScale, bleed, contrast, midtones, highlights, depth, invert, threshold
     });
 
-    // 4. Put Data
+    // 4. Write
     ctx.putImageData(result, 0, 0);
 
     if (mediaType === 'video' && isPlaying) {
@@ -577,45 +497,66 @@ export default function App() {
     }
   }, [mediaType, isPlaying, scale, style, currentPalette, lineScale, bleed, contrast, midtones, highlights, depth, invert, threshold, blur]);
 
+  // Main Render Loop Effect
   useEffect(() => {
-    if (mediaType === 'image' && sourceUrl) {
-       const timer = setTimeout(processFrame, 50);
-       return () => clearTimeout(timer);
-    } else if (mediaType === 'video' && isPlaying) {
-       if (hiddenVideoRef.current) hiddenVideoRef.current.play().catch(e => console.log("Autoplay blocked", e));
-       processFrame();
-       return () => cancelAnimationFrame(animationFrameRef.current);
-    } else if (mediaType === 'video' && !isPlaying) {
-       if (hiddenVideoRef.current) hiddenVideoRef.current.pause();
-       cancelAnimationFrame(animationFrameRef.current);
+    if (!mediaType || !sourceUrl) return;
+
+    if (mediaType === 'image') {
+       // Render once for image
+       const id = requestAnimationFrame(processFrame);
+       return () => cancelAnimationFrame(id);
+    } 
+
+    if (mediaType === 'video') {
+       const video = hiddenVideoRef.current;
+       if (video) {
+           video.play().catch(e => console.log("Autoplay blocked", e));
+       }
+       
+       if (isPlaying) {
+           animationFrameRef.current = requestAnimationFrame(processFrame);
+           return () => {
+               if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
+           };
+       } else {
+           if (video) video.pause();
+       }
     }
   }, [mediaType, sourceUrl, isPlaying, processFrame]);
 
   const toggleRecording = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Browser Support Guard
+    if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
+        alert('Recording is not supported in this browser.');
+        return;
+    }
+
     if (isRecording) {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
       setIsRecording(false);
-    } else {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const stream = canvas.captureStream(30); 
-      let options = { mimeType: 'video/webm;codecs=vp9' };
-      if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { mimeType: 'video/webm' };
-      
-      const mediaRecorder = new MediaRecorder(stream, options);
-      mediaRecorderRef.current = mediaRecorder;
-      recordedChunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = 'dither-boy-video.webm'; a.click(); URL.revokeObjectURL(url);
-      };
-      mediaRecorder.start();
-      setIsRecording(true);
-      if (mediaType === 'video' && !isPlaying) setIsPlaying(true);
+      return;
     }
+
+    const stream = canvas.captureStream(30); 
+    let options = { mimeType: 'video/webm;codecs=vp9' };
+    if (!MediaRecorder.isTypeSupported(options.mimeType)) options = { mimeType: 'video/webm' };
+    
+    const mediaRecorder = new MediaRecorder(stream, options);
+    mediaRecorderRef.current = mediaRecorder;
+    recordedChunksRef.current = [];
+    
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'dither-boy-video.webm'; a.click(); URL.revokeObjectURL(url);
+    };
+    mediaRecorder.start();
+    setIsRecording(true);
+    if (mediaType === 'video' && !isPlaying) setIsPlaying(true);
   };
 
   const handleStaticExport = () => {
@@ -626,7 +567,34 @@ export default function App() {
     link.click();
   };
 
-  // --- COMPONENT HELPERS ---
+  const handleReset = () => {
+    setScale(4); setContrast(45); setThreshold(128); setBlur(0); setBleed(50); setDepth(0); setInvert(false);
+    setSelectedCategory("Error Diffusion"); setStyle("Atkinson"); 
+    setPaletteCategory("Halloween"); setPaletteIdx(0);
+    setMidtones(50); setHighlights(50); setLineScale(4);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+        // Manually trigger file load logic
+        // We reuse the logic from handleFileUpload but adapted for the file object
+        setIsPlaying(false);
+        setIsRecording(false);
+        if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+        const url = URL.createObjectURL(file);
+        setSourceUrl(url);
+        if (file.type.startsWith('video')) {
+          setMediaType('video');
+          setIsPlaying(true);
+        } else {
+          setMediaType('image');
+          setIsPlaying(false);
+        }
+    }
+  };
+
   const ControlGroup = ({ label, value, min, max, onChange, highlight = false, subLabel }) => (
       <div className="mb-4">
           <div className="flex justify-between text-xs mb-1">
@@ -644,16 +612,25 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#120a0a] text-[#d1d1d1] font-sans selection:bg-[#ff6600] selection:text-black">
-      <img ref={hiddenImageRef} src={mediaType === 'image' ? sourceUrl : ''} className="hidden" onLoad={processFrame} alt="src" />
-      <video ref={hiddenVideoRef} src={mediaType === 'video' ? sourceUrl : ''} className="hidden" loop muted playsInline onLoadedMetadata={fitToScreen} />
+      <img 
+        ref={hiddenImageRef} 
+        src={mediaType === 'image' ? sourceUrl ?? '' : ''} 
+        className="hidden" 
+        onLoad={() => { fitToScreen(); processFrame(); }} 
+        alt="src" 
+      />
+      <video 
+        ref={hiddenVideoRef} 
+        src={mediaType === 'video' ? sourceUrl ?? '' : ''} 
+        className="hidden" 
+        loop muted playsInline 
+        onLoadedMetadata={() => { fitToScreen(); if(isPlaying) processFrame(); }} 
+      />
 
       {/* TOP HEADER */}
       <div className="absolute top-0 left-0 right-0 h-10 bg-[#0a0505] border-b border-[#2a1a1a] flex items-center px-4 justify-between z-20">
         <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
            <span className="text-[#ff6600] font-black tracking-widest text-sm">DITHER BOY <span className="text-white opacity-20 font-normal">PRO</span></span>
-           <span className="hover:text-white cursor-pointer transition-colors">File</span> 
-           <span className="hover:text-white cursor-pointer transition-colors">Edit</span> 
-           <span className="hover:text-white cursor-pointer transition-colors">Help</span>
         </div>
         <div className="flex items-center gap-3">
              <button onClick={() => setShowSettings(!showSettings)} className={`p-1.5 rounded hover:bg-[#2a1a1a] ${showSettings ? 'text-[#ff6600]' : 'text-gray-500'}`}>
@@ -663,17 +640,22 @@ export default function App() {
       </div>
       
       {/* MAIN VIEWPORT */}
-      <div ref={containerRef} className="flex-1 flex items-center justify-center bg-[#050202] mt-10 relative overflow-hidden">
+      <div 
+        ref={containerRef} 
+        className="flex-1 flex items-center justify-center bg-[#050202] mt-10 relative overflow-hidden"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+      >
         {sourceUrl ? (
           <div style={{ transform: `scale(${zoom})`, transition: 'transform 0.1s ease-out' }} className="shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-[#2a1a1a] origin-center">
             <canvas ref={canvasRef} style={{ imageRendering: 'pixelated', display: 'block' }} />
           </div>
         ) : (
-          <div className="text-center text-[#332222] select-none flex flex-col items-center animate-pulse">
+          <div className="text-center text-[#332222] select-none flex flex-col items-center animate-pulse pointer-events-none">
             <div className="w-24 h-24 mb-4 border-2 border-[#ff6600] rounded-full flex items-center justify-center bg-[#0a0505]">
                 <Upload size={32} className="text-[#ff6600]" />
             </div>
-            <p className="text-sm font-bold text-[#ff6600] tracking-widest uppercase">Drop Image or Video</p>
+            <p className="text-sm font-bold text-[#ff6600] tracking-widest uppercase">Click Import to Load Media</p>
             <p className="text-xs text-gray-600 mt-2">Supports MP4, WEBM, PNG, JPG, GIF</p>
           </div>
         )}
@@ -762,13 +744,13 @@ export default function App() {
           </div>
 
           {/* RESET */}
-          <button onClick={() => { setScale(4); setContrast(45); setThreshold(128); setBlur(0); setBleed(50); setDepth(0); setInvert(false); }} 
+          <button onClick={handleReset} 
                   className="w-full py-3 bg-[#1a0a0a] hover:bg-[#ff0000]/20 text-gray-500 hover:text-red-400 rounded text-xs transition-colors flex items-center justify-center gap-2">
             <RotateCcw size={12} /> Reset Parameters
           </button>
           
           <div className="text-[10px] text-[#332222] text-center pb-4">
-              v4.0.0 • Studio AAA
+              v4.1.0 • Studio AAA
           </div>
         </div>
       </div>
