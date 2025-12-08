@@ -518,9 +518,11 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
-  // zoom is split into "fit zoom" (auto) and "user zoom factor" (manual)
+  // media intrinsic size and zoom
+  const [mediaDims, setMediaDims] = useState(null);
   const fitZoomRef = useRef(1);
   const [zoomFactor, setZoomFactor] = useState(1);
+
   const [showSettings, setShowSettings] = useState(true);
 
   const [scale, setScale] = useState(4);
@@ -570,14 +572,13 @@ export default function App() {
   const computeFitZoom = useCallback((mediaW, mediaH) => {
     if (!containerRef.current || !mediaW || !mediaH) return;
     const { clientWidth, clientHeight } = containerRef.current;
-    // small padding inside viewport
     const usableW = clientWidth * 0.9;
     const usableH = clientHeight * 0.9;
     const scaleX = usableW / mediaW;
     const scaleY = usableH / mediaH;
-    const fitZoom = Math.min(scaleX, scaleY, 1); // never upscale by default
+    const fitZoom = Math.min(scaleX, scaleY, 1); // never auto-upscale
     fitZoomRef.current = fitZoom > 0 ? fitZoom : 1;
-    setZoomFactor(1); // reset manual zoom for new media
+    setZoomFactor(1);
   }, []);
 
   const handleFileUpload = (file) => {
@@ -587,6 +588,7 @@ export default function App() {
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
     const url = URL.createObjectURL(file);
     setSourceUrl(url);
+    setMediaDims(null);
     if (file.type.startsWith('video')) {
       setMediaType('video');
       setIsPlaying(true);
@@ -626,6 +628,11 @@ export default function App() {
     }
 
     if (!w || !h || !source) return;
+
+    if (!mediaDims || mediaDims.w !== w || mediaDims.h !== h) {
+      setMediaDims({ w, h });
+      computeFitZoom(w, h);
+    }
 
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
@@ -672,6 +679,8 @@ export default function App() {
     invert,
     threshold,
     blur,
+    mediaDims,
+    computeFitZoom,
   ]);
 
   useEffect(() => {
@@ -698,7 +707,6 @@ export default function App() {
     }
   }, [mediaType, sourceUrl, isPlaying, processFrame]);
 
-  // clean up rAF on unmount
   useEffect(
     () => () => {
       if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
@@ -786,15 +794,17 @@ export default function App() {
   const adjustZoom = (multiplier) => {
     setZoomFactor(z => {
       const next = z * multiplier;
-      // clamp manual zoom so total zoom never gets ridiculous
-      const clamped = Math.min(2.5, Math.max(0.5, next));
-      return clamped;
+      return Math.min(3, Math.max(0.25, next));
     });
   };
 
   const zoomIn = () => adjustZoom(1.15);
   const zoomOut = () => adjustZoom(1 / 1.15);
+
   const displayZoom = fitZoomRef.current * zoomFactor;
+
+  const displayWidth = mediaDims ? mediaDims.w * displayZoom : undefined;
+  const displayHeight = mediaDims ? mediaDims.h * displayZoom : undefined;
 
   const ControlGroup = ({ label, value, min, max, onChange, highlight, subLabel }) => (
     <div className="mb-3">
@@ -816,14 +826,17 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-black text-slate-200 selection:bg-lime-400 selection:text-black">
-      {/* hidden media sources */}
+      {/* hidden media */}
       <img
         ref={hiddenImageRef}
         src={mediaType === 'image' ? sourceUrl ?? '' : ''}
         className="hidden"
         onLoad={e => {
           const img = e.currentTarget;
-          computeFitZoom(img.naturalWidth, img.naturalHeight);
+          const w = img.naturalWidth || img.width;
+          const h = img.naturalHeight || img.height;
+          setMediaDims({ w, h });
+          computeFitZoom(w, h);
           processFrame();
         }}
         alt="source"
@@ -837,20 +850,23 @@ export default function App() {
         playsInline
         onLoadedMetadata={e => {
           const video = e.currentTarget;
-          computeFitZoom(video.videoWidth, video.videoHeight);
+          const w = video.videoWidth;
+          const h = video.videoHeight;
+          setMediaDims({ w, h });
+          computeFitZoom(w, h);
           if (isPlaying) processFrame();
         }}
       />
 
       {/* top bar */}
-      <header className="relative z-20 flex h-14 items-center justify-between border-b border-lime-400/10 bg-gradient-to-r from-black via-slate-950/60 to-black px-6">
-        <div className="flex items-center gap-4">
-          <div className="relative flex h-10 w-10 items-center justify-center rounded-md bg-lime-400/10 ring-1 ring-lime-300/40 shadow-[0_0_30px_rgba(190,242,100,0.6)]">
+      <header className="relative z-20 flex h-14 flex-shrink-0 items-center justify-between border-b border-lime-400/10 bg-gradient-to-r from-black via-slate-950/60 to-black px-6">
+        <div className="flex items-center gap-4 overflow-hidden">
+          <div className="relative flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-lime-400/10 ring-1 ring-lime-300/40 shadow-[0_0_30px_rgba(190,242,100,0.6)]">
             <span className="text-xs font-black tracking-wider text-lime-300">EX</span>
             <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_center,#22c55e44,transparent_65%)]" />
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-baseline gap-2">
+          <div className="flex min-w-0 flex-col">
+            <div className="flex flex-wrap items-baseline gap-2">
               <span className="bg-gradient-to-r from-lime-300 via-lime-400 to-emerald-300 bg-clip-text text-sm font-black tracking-[0.35em] text-transparent">
                 EX DITHERA
               </span>
@@ -858,13 +874,13 @@ export default function App() {
                 REALTIME
               </span>
             </div>
-            <span className="mt-0.5 text-[11px] text-slate-500">
+            <span className="mt-0.5 truncate text-[11px] text-slate-500">
               Adaptive error–diffusion lab for video &amp; still frames.
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-6 text-[11px]">
+        <div className="flex flex-shrink-0 items-center gap-6 text-[11px]">
           <div className="flex items-center gap-2">
             <span className="text-slate-500">GPU STATUS</span>
             <div className="flex items-center gap-2">
@@ -874,23 +890,21 @@ export default function App() {
               <span className="font-mono text-lime-300">80%</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowSettings(s => !s)}
-              className={`flex h-8 w-8 items-center justify-center rounded-md border border-lime-400/20 bg-black/60 text-slate-400 transition hover:border-lime-300/60 hover:text-lime-200 ${
-                showSettings ? 'ring-1 ring-lime-300/60 text-lime-300' : ''
-              }`}
-            >
-              <Settings size={16} />
-            </button>
-          </div>
+          <button
+            onClick={() => setShowSettings(s => !s)}
+            className={`flex h-8 w-8 items-center justify-center rounded-md border border-lime-400/20 bg-black/60 text-slate-400 transition hover:border-lime-300/60 hover:text-lime-200 ${
+              showSettings ? 'ring-1 ring-lime-300/60 text-lime-300' : ''
+            }`}
+          >
+            <Settings size={16} />
+          </button>
         </div>
       </header>
 
-      {/* layout */}
-      <main className="flex flex-1 overflow-hidden">
-        {/* left metrics */}
-        <aside className="hidden w-64 flex-col border-r border-lime-400/10 bg-gradient-to-b from-black via-slate-950 to-black/90 px-4 py-4 lg:flex">
+      {/* main layout */}
+      <main className="flex min-h-0 flex-1 overflow-hidden">
+        {/* left panel */}
+        <aside className="hidden min-h-0 w-64 flex-shrink-0 flex-col overflow-auto border-r border-lime-400/10 bg-gradient-to-b from-black via-slate-950 to-black/90 px-4 py-4 lg:flex">
           <div className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-slate-500">
             Session Metrics
           </div>
@@ -941,10 +955,10 @@ export default function App() {
           </div>
         </aside>
 
-        {/* center viewport */}
-        <section className="relative flex flex-1 flex-col bg-gradient-to-b from-black via-slate-950 to-black">
+        {/* center workspace */}
+        <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-black via-slate-950 to-black">
           {/* EX DITHERA glyph */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-4">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-0 flex justify-center pt-4">
             <div className="flex flex-col items-center opacity-80">
               <span className="bg-gradient-to-r from-lime-300 via-lime-500 to-amber-300 bg-clip-text text-xs font-black tracking-[0.6em] text-transparent">
                 EX
@@ -958,133 +972,142 @@ export default function App() {
 
           <div
             ref={containerRef}
-            className="relative flex flex-1 items-center justify-center px-6 pb-8 pt-10"
+            className="relative z-10 flex min-h-0 flex-1 flex-col px-6 pb-8 pt-10"
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
           >
-            {sourceUrl ? (
-              <div className="relative max-h-full max-w-full overflow-hidden rounded-2xl border border-lime-400/20 bg-black/80 shadow-[0_0_45px_rgba(190,242,100,0.25)]">
-                <div
-                  style={{ transform: `scale(${displayZoom})` }}
-                  className="origin-center"
-                >
-                  <canvas
-                    ref={canvasRef}
-                    style={{ imageRendering: 'pixelated', display: 'block' }}
-                    className="rounded-2xl"
-                  />
-                </div>
-                <div className="pointer-events-none absolute inset-0 rounded-2xl border border-lime-300/10 shadow-[inset_0_0_60px_rgba(15,23,42,0.8)]" />
+            {/* scrollable workspace area */}
+            <div className="relative flex min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-900 bg-gradient-to-b from-black/80 via-slate-950/90 to-black/90 p-4">
+              <div className="m-auto">
+                {sourceUrl ? (
+                  <div className="relative inline-block">
+                    <canvas
+                      ref={canvasRef}
+                      style={{
+                        display: 'block',
+                        imageRendering: 'pixelated',
+                        width: displayWidth ? `${displayWidth}px` : 'auto',
+                        height: displayHeight ? `${displayHeight}px` : 'auto',
+                        maxWidth: '100%',
+                        maxHeight: '100%',
+                      }}
+                      className="rounded-2xl"
+                    />
+                    <div className="pointer-events-none absolute inset-0 rounded-2xl border border-lime-300/10 shadow-[inset_0_0_60px_rgba(15,23,42,0.8)]" />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-lime-400/30 bg-black/70 px-10 py-16 text-center text-slate-500 shadow-[0_0_40px_rgba(15,23,42,0.8)]">
+                    <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-lime-400/40 bg-gradient-to-b from-black via-slate-950 to-black shadow-[0_0_40px_rgba(190,242,100,0.3)]">
+                      <Upload size={34} className="text-lime-300" />
+                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.4em] text-lime-300">
+                      Drop Media
+                    </p>
+                    <p className="mt-2 text-[11px] text-slate-500">
+                      Drag an image or video here, or click <span className="text-lime-300">Import</span> in
+                      the control rail.
+                    </p>
+                    <p className="mt-1 text-[10px] text-slate-600">
+                      Supports PNG, JPG, GIF, MP4, WEBM
+                    </p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-lime-400/30 bg-black/70 px-10 py-16 text-center text-slate-500 shadow-[0_0_40px_rgba(15,23,42,0.8)]">
-                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-lime-400/40 bg-gradient-to-b from-black via-slate-950 to-black shadow-[0_0_40px_rgba(190,242,100,0.3)]">
-                  <Upload size={34} className="text-lime-300" />
-                </div>
-                <p className="text-xs font-semibold uppercase tracking-[0.4em] text-lime-300">
-                  Drop Media
-                </p>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Drag an image or video here, or click <span className="text-lime-300">Import</span> in
-                  the control rail.
-                </p>
-                <p className="mt-1 text-[10px] text-slate-600">
-                  Supports PNG, JPG, GIF, MP4, WEBM
-                </p>
-              </div>
-            )}
-
-            {/* zoom bar */}
-            <div className="pointer-events-auto absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-lime-400/20 bg-black/80 px-3 py-1.5 text-[11px] text-slate-300 shadow-[0_0_30px_rgba(15,23,42,0.9)]">
-              <button
-                onClick={zoomOut}
-                disabled={!sourceUrl}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-lime-400/20 hover:text-lime-300 disabled:opacity-40"
-              >
-                <ZoomOut size={14} />
-              </button>
-              <div className="mx-1 flex items-center gap-2">
-                <span className="font-mono text-slate-400">
-                  {sourceUrl ? (displayZoom * 100).toFixed(0) : '--'}%
-                </span>
-                <span className="h-1 w-20 overflow-hidden rounded-full bg-slate-900">
-                  <span
-                    className="block h-full bg-gradient-to-r from-lime-300 via-lime-500 to-emerald-400"
-                    style={{ width: sourceUrl ? `${Math.min(100, Math.max(displayZoom * 100, 5))}%` : '0%' }}
-                  />
-                </span>
-              </div>
-              <button
-                onClick={zoomIn}
-                disabled={!sourceUrl}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-lime-400/20 hover:text-lime-300 disabled:opacity-40"
-              >
-                <ZoomIn size={14} />
-              </button>
-              <button
-                onClick={() => {
-                  if (!canvasRef.current) return;
-                  const w = canvasRef.current.width || 1;
-                  const h = canvasRef.current.height || 1;
-                  computeFitZoom(w, h);
-                }}
-                disabled={!sourceUrl}
-                className="ml-1 flex h-7 items-center gap-1 rounded-full bg-gradient-to-r from-lime-400/20 via-lime-500/20 to-emerald-400/20 px-2 text-[10px] font-semibold text-lime-200 ring-1 ring-lime-400/40 hover:from-lime-400/30 hover:via-lime-500/30 hover:to-emerald-400/30 disabled:opacity-40"
-              >
-                <Maximize size={12} />
-                Fit
-              </button>
             </div>
-          </div>
 
-          {/* bottom mobile import/export */}
-          <div className="flex border-t border-lime-400/10 bg-black/80 px-4 py-3 text-[11px] lg:hidden">
-            <div className="flex flex-1 items-center gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/mp4,video/webm"
-                onChange={onFileInputChange}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1 rounded-md bg-lime-500/10 px-3 py-1.5 font-semibold text-lime-300 ring-1 ring-lime-400/60"
-              >
-                <ImageIcon size={13} /> Import
-              </button>
-              <button
-                onClick={mediaType === 'video' ? toggleRecording : handleStaticExport}
-                disabled={!sourceUrl}
-                className={`flex items-center gap-1 rounded-md px-3 py-1.5 font-semibold ${
-                  sourceUrl
-                    ? 'bg-slate-900 text-slate-200 ring-1 ring-lime-300/40 hover:bg-lime-500/10 hover:text-lime-200'
-                    : 'bg-slate-900 text-slate-600 ring-1 ring-slate-700'
-                }`}
-              >
-                {mediaType === 'video' ? (
-                  isRecording ? (
-                    <>
-                      <Disc size={12} className="text-red-400" /> Stop
-                    </>
+            {/* zoom control bar */}
+            <div className="mt-3 flex items-center justify-center">
+              <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-lime-400/20 bg-black/80 px-3 py-1.5 text-[11px] text-slate-300 shadow-[0_0_30px_rgba(15,23,42,0.9)]">
+                <button
+                  onClick={zoomOut}
+                  disabled={!sourceUrl}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-lime-400/20 hover:text-lime-300 disabled:opacity-40"
+                >
+                  <ZoomOut size={14} />
+                </button>
+                <div className="mx-1 flex items-center gap-2">
+                  <span className="font-mono text-slate-400">
+                    {sourceUrl ? (displayZoom * 100).toFixed(0) : '--'}%
+                  </span>
+                  <span className="h-1 w-20 overflow-hidden rounded-full bg-slate-900">
+                    <span
+                      className="block h-full bg-gradient-to-r from-lime-300 via-lime-500 to-emerald-400"
+                      style={{
+                        width: sourceUrl ? `${Math.min(100, Math.max(displayZoom * 100, 5))}%` : '0%',
+                      }}
+                    />
+                  </span>
+                </div>
+                <button
+                  onClick={zoomIn}
+                  disabled={!sourceUrl}
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-lime-400/20 hover:text-lime-300 disabled:opacity-40"
+                >
+                  <ZoomIn size={14} />
+                </button>
+                <button
+                  onClick={() => {
+                    if (!mediaDims) return;
+                    computeFitZoom(mediaDims.w, mediaDims.h);
+                  }}
+                  disabled={!sourceUrl}
+                  className="ml-1 flex h-7 items-center gap-1 rounded-full bg-gradient-to-r from-lime-400/20 via-lime-500/20 to-emerald-400/20 px-2 text-[10px] font-semibold text-lime-200 ring-1 ring-lime-400/40 hover:from-lime-400/30 hover:via-lime-500/30 hover:to-emerald-400/30 disabled:opacity-40"
+                >
+                  <Maximize size={12} />
+                  Fit
+                </button>
+              </div>
+            </div>
+
+            {/* bottom mobile import/export */}
+            <div className="mt-3 flex border-t border-lime-400/10 bg-black/80 px-4 py-3 text-[11px] lg:hidden">
+              <div className="flex flex-1 items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/mp4,video/webm"
+                  onChange={onFileInputChange}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 rounded-md bg-lime-500/10 px-3 py-1.5 font-semibold text-lime-300 ring-1 ring-lime-400/60"
+                >
+                  <ImageIcon size={13} /> Import
+                </button>
+                <button
+                  onClick={mediaType === 'video' ? toggleRecording : handleStaticExport}
+                  disabled={!sourceUrl}
+                  className={`flex items-center gap-1 rounded-md px-3 py-1.5 font-semibold ${
+                    sourceUrl
+                      ? 'bg-slate-900 text-slate-200 ring-1 ring-lime-300/40 hover:bg-lime-500/10 hover:text-lime-200'
+                      : 'bg-slate-900 text-slate-600 ring-1 ring-slate-700'
+                  }`}
+                >
+                  {mediaType === 'video' ? (
+                    isRecording ? (
+                      <>
+                        <Disc size={12} className="text-red-400" /> Stop
+                      </>
+                    ) : (
+                      <>
+                        <Video size={12} /> Record
+                      </>
+                    )
                   ) : (
                     <>
-                      <Video size={12} /> Record
+                      <Download size={12} /> Export
                     </>
-                  )
-                ) : (
-                  <>
-                    <Download size={12} /> Export
-                  </>
-                )}
-              </button>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </section>
 
         {/* right control rail */}
         <aside
-          className={`z-20 flex w-80 flex-col border-l border-lime-400/10 bg-gradient-to-b from-black via-slate-950 to-black/90 transition-transform duration-300 ${
+          className={`z-20 flex min-h-0 w-80 flex-shrink-0 flex-col overflow-auto border-l border-lime-400/10 bg-gradient-to-b from-black via-slate-950 to-black/90 transition-transform duration-300 ${
             showSettings ? 'translate-x-0' : 'translate-x-full'
           }`}
         >
