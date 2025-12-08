@@ -431,12 +431,12 @@ const applyPalette = (gray, colors) => {
 /* --------------------------- 4. MAIN APP ----------------------------- */
 
 export default function App() {
-  const [mediaType, setMediaType] = useState(null); // 'image' | 'video'
+  const [mediaType, setMediaType] = useState(null);
   const [sourceUrl, setSourceUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
-  const [mediaDims, setMediaDims] = useState(null); // {w,h}
+  const [mediaDims, setMediaDims] = useState(null);
 
   const [scale, setScale] = useState(4);
   const [style, setStyle] = useState('Atkinson');
@@ -461,7 +461,6 @@ export default function App() {
   const hiddenImageRef = useRef(null);
   const fileInputRef = useRef(null);
   const workspaceRef = useRef(null);
-  const animationFrameRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
 
@@ -482,7 +481,7 @@ export default function App() {
     }
   }, [availableStyles, style]);
 
-  const handleFileUpload = file => {
+  const handleFileUpload = (file) => {
     if (!file) return;
     setIsPlaying(false);
     setIsRecording(false);
@@ -499,22 +498,23 @@ export default function App() {
     }
   };
 
-  const onFileInputChange = e => {
+  const onFileInputChange = (e) => {
     handleFileUpload(e.target.files?.[0] || null);
   };
 
-  // auto-fit render size: NO zoom, just fit inside workspace
+  // auto-fit render size: no zoom scaling beyond workspace
   const computeRenderSize = useCallback(
     (intrinsicW, intrinsicH) => {
       const workspace = workspaceRef.current;
       if (!workspace) return { w: intrinsicW, h: intrinsicH };
-      const padding = 32;
-      const maxW = Math.max(200, workspace.clientWidth - padding);
-      const maxH = Math.max(200, workspace.clientHeight - padding);
-      const scale = Math.min(maxW / intrinsicW, maxH / intrinsicH, 1);
-      const w = Math.max(1, Math.floor(intrinsicW * scale));
-      const h = Math.max(1, Math.floor(intrinsicH * scale));
-      return { w, h };
+      const padding = 64;
+      const maxW = Math.max(240, workspace.clientWidth - padding);
+      const maxH = Math.max(240, workspace.clientHeight - padding);
+      const s = Math.min(maxW / intrinsicW, maxH / intrinsicH, 1);
+      return {
+        w: Math.max(1, Math.floor(intrinsicW * s)),
+        h: Math.max(1, Math.floor(intrinsicH * s)),
+      };
     },
     [],
   );
@@ -635,7 +635,7 @@ export default function App() {
     return () => window.removeEventListener('resize', onResize);
   }, [sourceUrl, processFrame]);
 
-  const handleDrop = e => {
+  const handleDrop = (e) => {
     e.preventDefault();
     handleFileUpload(e.dataTransfer.files?.[0] || null);
   };
@@ -659,7 +659,7 @@ export default function App() {
 
     const stream = canvas.captureStream(30);
     let options = { mimeType: 'video/webm;codecs=vp9' };
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    if (!MediaRecorder.isTypeSupported(options.mimeType || '')) {
       options = { mimeType: 'video/webm' };
     }
 
@@ -709,11 +709,21 @@ export default function App() {
     setLineScale(4);
   };
 
-  const ControlGroup = ({ label, value, min, max, onChange, highlight }) => (
+  const togglePlayback = () => {
+    if (mediaType === 'video') setIsPlaying(p => !p);
+  };
+
+  const ControlGroup = ({
+    label,
+    value,
+    min,
+    max,
+    onChange,
+  }) => (
     <div className="mb-3">
-      <div className="mb-1 flex justify-between text-[11px]">
-        <span className={highlight ? 'text-[#9bbc0f] font-semibold' : 'text-slate-400'}>{label}</span>
-        <span className="font-mono text-slate-500">{value}</span>
+      <div className="mb-1 flex justify-between text-[10px] tracking-[0.18em] uppercase">
+        <span className="text-[#ffb347]">{label}</span>
+        <span className="font-mono text-orange-500">{value}</span>
       </div>
       <input
         type="range"
@@ -721,7 +731,7 @@ export default function App() {
         max={max}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="h-1 w-full cursor-pointer appearance-none rounded bg-slate-900 accent-[#9bbc0f]"
+        className="h-1 w-full cursor-pointer appearance-none rounded bg-orange-900/40 accent-[#ffb347]"
       />
     </div>
   );
@@ -729,8 +739,8 @@ export default function App() {
   const paletteNames = Object.keys(PALETTE_PRESETS);
 
   return (
-    <div className="flex h-screen flex-col bg-black text-slate-100 selection:bg-[#9bbc0f] selection:text-black">
-      {/* hidden media */}
+    <div className="flex h-screen flex-col bg-black text-orange-300 font-mono selection:bg-orange-400 selection:text-black">
+      {/* hidden media elements */}
       <img
         ref={hiddenImageRef}
         src={mediaType === 'image' ? sourceUrl ?? '' : ''}
@@ -760,80 +770,130 @@ export default function App() {
         }}
       />
 
-      {/* HEADER */}
-      <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-[#9bbc0f]/25 bg-gradient-to-r from-black via-slate-950/70 to-black px-5">
+      {/* TOP HUD BAR */}
+      <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-orange-500/60 bg-gradient-to-r from-black via-zinc-950 to-black px-6">
         <div className="flex items-center gap-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded border border-[#9bbc0f]/70 bg-black shadow-[0_0_25px_rgba(155,188,15,0.7)]">
-            <span className="text-[11px] font-black tracking-widest text-[#9bbc0f]">EX</span>
+          <div className="flex h-11 w-11 items-center justify-center rounded border border-orange-500 shadow-[0_0_30px_rgba(255,115,0,0.9)]">
+            <span className="text-xs font-black tracking-[0.35em] text-orange-400">EX</span>
           </div>
           <div className="flex flex-col">
-            <span className="bg-gradient-to-r from-[#9bbc0f] via-lime-300 to-emerald-300 bg-clip-text text-xs font-black tracking-[0.35em] text-transparent">
-              EX DITHERA
+            <span className="bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-200 bg-clip-text text-[10px] font-black tracking-[0.6em] text-transparent uppercase">
+              SUPER • TERRAIN 86
             </span>
-            <span className="mt-0.5 text-[10px] text-slate-500">
-              Adaptive error–diffusion lab for stills &amp; video.
+            <span className="mt-1 text-[10px] tracking-[0.3em] text-orange-700 uppercase">
+              Adaptive dithering cartography unit
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-slate-500">
-          <span>GPU</span>
-          <div className="h-1.5 w-20 overflow-hidden rounded bg-slate-800">
-            <div className="h-full w-4/5 bg-[#9bbc0f]" />
+        <div className="flex flex-col gap-1 text-[9px] text-orange-500 tracking-[0.18em] uppercase">
+          <div className="flex gap-6">
+            <span>GRID: {mediaDims ? `${mediaDims.w}×${mediaDims.h}` : 'NO INPUT'}</span>
+            <span>
+              ENGINE: {selectedCategory} › {style}
+            </span>
           </div>
-          <span className="font-mono text-[#9bbc0f]">80%</span>
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-orange-500/70 to-transparent" />
         </div>
       </header>
 
-      {/* MAIN */}
+      {/* MAIN BODY */}
       <main className="flex min-h-0 flex-1 overflow-hidden">
-        {/* CENTER WORKSPACE */}
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-black via-slate-950 to-black">
+        {/* CENTRAL TERRAIN VIEWPORT */}
+        <section className="flex min-w-0 flex-1 flex-col bg-gradient-to-b from-black via-zinc-950 to-black">
           <div
             ref={workspaceRef}
-            className="relative flex min-h-0 flex-1 overflow-auto px-4 pb-4 pt-4"
+            className="relative flex flex-1 items-center justify-center overflow-auto px-8 py-6"
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
           >
-            <div className="m-auto">
-              {sourceUrl ? (
-                <div className="inline-block rounded border border-[#9bbc0f]/40 bg-black/80 p-2 shadow-[0_0_35px_rgba(15,23,42,0.8)]">
+            {sourceUrl ? (
+              <div className="relative inline-flex flex-col gap-2">
+                {/* top caption bar */}
+                <div className="flex items-center justify-between border border-orange-500/70 bg-black/80 px-4 py-1 text-[9px] uppercase tracking-[0.25em] text-orange-400">
+                  <span>ACTIVE HEIGHTMAP</span>
+                  <span>{mediaType === 'video' ? 'STREAM' : 'STILL'} INPUT</span>
+                </div>
+
+                {/* canvas frame */}
+                <div className="relative border border-orange-500/80 bg-black/90 p-3 shadow-[0_0_45px_rgba(255,120,0,0.8)]">
+                  {/* fake isometric grid overlay lines (purely visual) */}
+                  <div className="pointer-events-none absolute inset-3 border border-orange-500/30" />
+                  <div className="pointer-events-none absolute inset-3">
+                    <div className="h-full w-full bg-[radial-gradient(circle_at_top,_rgba(255,150,0,0.15),_transparent_70%)]" />
+                  </div>
                   <canvas
                     ref={canvasRef}
-                    className="block max-h-[80vh] max-w-full rounded"
+                    className="relative block bg-black"
                     style={{ imageRendering: 'pixelated' }}
                   />
                 </div>
-              ) : (
-                <div className="flex max-w-lg flex-col items-center rounded border border-dashed border-[#9bbc0f]/50 bg-black/80 px-10 py-12 text-center text-[11px] text-slate-400">
-                  <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-[#9bbc0f]/70 bg-black shadow-[0_0_30px_rgba(155,188,15,0.65)]">
-                    <Upload size={30} className="text-[#9bbc0f]" />
-                  </div>
-                  <p className="font-semibold uppercase tracking-[0.4em] text-[#9bbc0f]">
-                    Drop Media
-                  </p>
-                  <p className="mt-2">
-                    Drag an image or video here, or use the <span className="text-[#9bbc0f]">Import</span>{' '}
-                    button.
-                  </p>
-                  <p className="mt-1 text-[10px] text-slate-600">
-                    PNG, JPG, GIF, MP4, WEBM supported.
-                  </p>
+
+                {/* tiny status bar under canvas */}
+                <div className="flex items-center justify-between border border-orange-500/60 bg-black/80 px-4 py-1 text-[9px] uppercase tracking-[0.25em] text-orange-500">
+                  <span>SESSION • {sourceUrl ? 'BOUND' : 'IDLE'}</span>
+                  <span>
+                    SCALE {scale} • DEPTH {depth}
+                  </span>
                 </div>
-              )}
+              </div>
+            ) : (
+              <div className="flex max-w-xl flex-col items-center rounded border border-dashed border-orange-500/70 bg-black/80 px-12 py-14 text-center text-[11px] text-orange-400 shadow-[0_0_40px_rgba(255,115,0,0.4)]">
+                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full border border-orange-500/80 bg-black">
+                  <Upload size={34} className="text-orange-400" />
+                </div>
+                <p className="text-[10px] uppercase tracking-[0.4em] text-orange-400">
+                  Drop Media To Instantiate Terrain
+                </p>
+                <p className="mt-3 text-[10px] text-orange-600">
+                  Drag an image or video into the grid, or use the{' '}
+                  <span className="text-orange-300">IMPORT SLOT</span> at the right.
+                </p>
+                <p className="mt-1 text-[9px] text-orange-700">
+                  PNG · JPG · GIF · MP4 · WEBM
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* bottom file strip */}
+          <div className="flex flex-shrink-0 items-stretch border-t border-orange-500/60 bg-black/95 px-8 py-3 text-[9px] uppercase tracking-[0.25em] text-orange-500">
+            <div className="flex flex-1 items-center gap-6">
+              {['A', 'B', 'C', 'D'].map((label, idx) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-2 border border-orange-700/70 bg-black/80 px-3 py-2"
+                >
+                  <div className="h-4 w-6 border border-orange-600/80" />
+                  <div className="flex flex-col">
+                    <span>{label} • SLOT</span>
+                    <span className="text-[8px] text-orange-700">
+                      {idx === 0 ? 'LIVE INPUT' : 'EMPTY'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="ml-6 flex w-64 flex-col border border-orange-700/80 bg-black/90 px-3 py-2 text-[8px] leading-tight text-orange-500">
+              <span>// EX-DITHERA SCRIPT FRAGMENT</span>
+              <span>var city = landscape.chooseTerrain('dither')</span>
+              <span>for (var i = 0; i &lt; pixels; i++) {'{'} distributeError(); {'}'}</span>
             </div>
           </div>
         </section>
 
-        {/* RIGHT CONTROL PANEL */}
-        <aside className="flex min-h-0 w-80 flex-shrink-0 flex-col border-l border-[#9bbc0f]/25 bg-gradient-to-b from-black via-slate-950 to-black">
-          <div className="flex flex-shrink-0 items-center justify-between border-b border-[#9bbc0f]/25 px-4 py-2 text-[10px] uppercase tracking-[0.25em] text-slate-500">
-            <span>Controls</span>
-            <span className="text-[#9bbc0f]">Core</span>
+        {/* RIGHT CONTROL TOWER */}
+        <aside className="flex w-80 flex-shrink-0 flex-col border-l border-orange-500/60 bg-gradient-to-b from-black via-zinc-950 to-black text-[11px]">
+          {/* tower title */}
+          <div className="border-b border-orange-500/60 px-4 py-3 text-[9px] uppercase tracking-[0.3em] text-orange-400">
+            <div className="flex items-center gap-2">
+              <Layers size={12} className="text-orange-400" />
+              <span>Dither Control Tower</span>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-auto px-4 py-3 text-[11px]">
-            {/* IMPORT / EXPORT */}
-            <div className="mb-4 grid grid-cols-2 gap-2">
+          <div className="flex-1 overflow-auto px-4 py-4">
+            {/* IMPORT / TRANSPORT ROW */}
+            <div className="mb-5 grid grid-cols-3 gap-2">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -843,52 +903,73 @@ export default function App() {
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center justify-center gap-2 rounded border border-[#9bbc0f]/70 bg-black/80 px-3 py-2 font-semibold text-[#9bbc0f] shadow-[0_0_20px_rgba(155,188,15,0.45)]"
+                className="flex h-10 items-center justify-center gap-2 border border-orange-500/80 bg-black/80 text-[9px] font-semibold uppercase tracking-[0.25em] text-orange-300 shadow-[0_0_20px_rgba(255,115,0,0.5)]"
               >
-                <ImageIcon size={13} /> Import
+                <ImageIcon size={12} /> Import
               </button>
               <button
-                onClick={mediaType === 'video' ? toggleRecording : handleStaticExport}
+                onClick={mediaType === 'video' ? togglePlayback : handleStaticExport}
                 disabled={!sourceUrl}
-                className={`flex items-center justify-center gap-2 rounded border px-3 py-2 font-semibold ${
-                  mediaType === 'video'
-                    ? isRecording
-                      ? 'border-red-500 bg-red-500 text-black animate-pulse'
-                      : sourceUrl
-                      ? 'border-[#9bbc0f]/50 bg-black text-slate-100 hover:bg-[#9bbc0f]/10'
-                      : 'border-slate-800 bg-black text-slate-600'
-                    : sourceUrl
-                    ? 'border-[#9bbc0f]/50 bg-black text-slate-100 hover:bg-[#9bbc0f]/10'
-                    : 'border-slate-800 bg-black text-slate-600'
+                className={`flex h-10 items-center justify-center gap-2 border text-[9px] font-semibold uppercase tracking-[0.25em] ${
+                  !sourceUrl
+                    ? 'border-orange-900/70 bg-black text-orange-900'
+                    : 'border-orange-500/80 bg-black/80 text-orange-300'
                 }`}
               >
                 {mediaType === 'video' ? (
-                  isRecording ? (
-                    <>
-                      <Disc size={12} /> Stop
-                    </>
-                  ) : (
-                    <>
-                      <Video size={12} /> Record
-                    </>
-                  )
+                  <>
+                    <Video size={12} /> {isPlaying ? 'Pause' : 'Play'}
+                  </>
                 ) : (
                   <>
                     <Download size={12} /> Export
                   </>
                 )}
               </button>
+              <button
+                onClick={handleReset}
+                className="flex h-10 items-center justify-center gap-2 border border-orange-700/80 bg-black/80 text-[9px] font-semibold uppercase tracking-[0.25em] text-orange-300 hover:bg-orange-900/40"
+              >
+                <RotateCcw size={12} /> Reset
+              </button>
             </div>
 
-            {/* DITHER ENGINE */}
-            <div className="mb-4">
-              <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#9bbc0f]">
-                <Layers size={12} /> Dither Engine
+            {/* VIDEO RECORD ROW */}
+            {mediaType === 'video' && (
+              <div className="mb-5">
+                <button
+                  onClick={toggleRecording}
+                  disabled={!sourceUrl}
+                  className={`flex w-full items-center justify-center gap-2 border px-3 py-2 text-[9px] font-semibold uppercase tracking-[0.3em] ${
+                    !sourceUrl
+                      ? 'border-orange-900/70 bg-black text-orange-900'
+                      : isRecording
+                      ? 'border-red-500 bg-red-600 text-black animate-pulse'
+                      : 'border-orange-500/80 bg-black/80 text-orange-300'
+                  }`}
+                >
+                  {isRecording ? (
+                    <>
+                      <Disc size={11} /> Stop Capture
+                    </>
+                  ) : (
+                    <>
+                      <Video size={11} /> Record Stream
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* ENGINE SELECTION – mimics terrain menu */}
+            <div className="mb-4 border border-orange-700/80 bg-black/80 p-3">
+              <div className="mb-2 text-[9px] uppercase tracking-[0.3em] text-orange-400">
+                Engine Bank
               </div>
               <select
                 value={selectedCategory}
                 onChange={e => setSelectedCategory(e.target.value)}
-                className="mb-2 w-full rounded border border-slate-800 bg-black/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-[#9bbc0f] focus:ring-1 focus:ring-[#9bbc0f]"
+                className="mb-2 w-full border border-orange-800 bg-black/80 px-2 py-1 text-[10px] text-orange-200 outline-none focus:border-orange-400"
               >
                 {Object.keys(ALGORITHM_CATEGORIES).map(cat => (
                   <option key={cat}>{cat}</option>
@@ -897,7 +978,7 @@ export default function App() {
               <select
                 value={style}
                 onChange={e => setStyle(e.target.value)}
-                className="w-full rounded border border-slate-800 bg-black/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-[#9bbc0f] focus:ring-1 focus:ring-[#9bbc0f]"
+                className="w-full border border-orange-800 bg-black/80 px-2 py-1 text-[10px] text-orange-200 outline-none focus:border-orange-400"
               >
                 {availableStyles.map(s => (
                   <option key={s}>{s}</option>
@@ -905,91 +986,91 @@ export default function App() {
               </select>
             </div>
 
-            {/* BASIC CONTROLS */}
-            <ControlGroup label="Pixel Scale" value={scale} min={1} max={20} onChange={setScale} highlight />
-            <ControlGroup
-              label="Pattern Scale"
-              value={lineScale}
-              min={1}
-              max={50}
-              onChange={setLineScale}
-            />
+            {/* SCALE / PATTERN */}
+            <div className="mb-4 border border-orange-700/80 bg-black/80 p-3">
+              <div className="mb-2 text-[9px] uppercase tracking-[0.3em] text-orange-400">
+                Grid Geometry
+              </div>
+              <ControlGroup label="Pixel Scale" value={scale} min={1} max={20} onChange={setScale} />
+              <ControlGroup
+                label="Pattern Scale"
+                value={lineScale}
+                min={1}
+                max={50}
+                onChange={setLineScale}
+              />
+              <ControlGroup label="Depth Offset" value={depth} min={0} max={20} onChange={setDepth} />
+            </div>
 
             {/* PALETTE */}
-            <div className="mt-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-[#9bbc0f]">
-              Color Pipeline
-            </div>
-            <select
-              value={paletteCategory}
-              onChange={e => {
-                setPaletteCategory(e.target.value);
-                setPaletteIdx(0);
-              }}
-              className="mb-3 w-full rounded border border-slate-800 bg-black/80 px-3 py-2 text-xs text-slate-100 outline-none focus:border-[#9bbc0f] focus:ring-1 focus:ring-[#9bbc0f]"
-            >
-              {paletteNames.map(p => (
-                <option key={p}>{p}</option>
-              ))}
-            </select>
-            <div className="mb-4 space-y-2">
-              {(PALETTE_PRESETS[paletteCategory] || []).map((pal, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setPaletteIdx(idx)}
-                  className={`relative flex h-7 w-full overflow-hidden rounded border ${
-                    paletteIdx === idx
-                      ? 'border-[#9bbc0f] shadow-[0_0_20px_rgba(155,188,15,0.6)]'
-                      : 'border-slate-800'
-                  }`}
-                >
-                  <div className="absolute inset-0 flex">
-                    {pal.map((c, i) => (
-                      <div key={i} style={{ background: c }} className="flex-1" />
-                    ))}
-                  </div>
-                </button>
-              ))}
+            <div className="mb-4 border border-orange-700/80 bg-black/80 p-3">
+              <div className="mb-2 text-[9px] uppercase tracking-[0.3em] text-orange-400">
+                Color Pipeline
+              </div>
+              <select
+                value={paletteCategory}
+                onChange={e => {
+                  setPaletteCategory(e.target.value);
+                  setPaletteIdx(0);
+                }}
+                className="mb-3 w-full border border-orange-800 bg-black/80 px-2 py-1 text-[10px] text-orange-200 outline-none focus:border-orange-400"
+              >
+                {paletteNames.map(p => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
+              <div className="space-y-2">
+                {(PALETTE_PRESETS[paletteCategory] || []).map((pal, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setPaletteIdx(idx)}
+                    className={`relative flex h-7 w-full overflow-hidden border ${
+                      paletteIdx === idx
+                        ? 'border-orange-400 shadow-[0_0_20px_rgba(255,120,0,0.8)]'
+                        : 'border-orange-800'
+                    }`}
+                  >
+                    <div className="absolute inset-0 flex">
+                      {pal.map((c, i) => (
+                        <div key={i} style={{ background: c }} className="flex-1" />
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* TONE SHAPING */}
-            <div className="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.3em] text-[#9bbc0f]">
-              <span>Tone Shaping</span>
-              <button
-                onClick={() => setInvert(i => !i)}
-                className={`rounded px-2 py-0.5 text-[9px] ${
-                  invert
-                    ? 'bg-[#9bbc0f] text-black'
-                    : 'border border-slate-700 bg-black text-slate-400'
-                }`}
-              >
-                Invert
-              </button>
+            <div className="mb-4 border border-orange-700/80 bg-black/80 p-3">
+              <div className="mb-2 flex items-center justify-between text-[9px] uppercase tracking-[0.3em] text-orange-400">
+                <span>Tone Shaping</span>
+                <button
+                  onClick={() => setInvert(i => !i)}
+                  className={`px-2 py-0.5 text-[9px] ${
+                    invert
+                      ? 'bg-orange-400 text-black'
+                      : 'border border-orange-700 text-orange-400'
+                  }`}
+                >
+                  Invert
+                </button>
+              </div>
+              <ControlGroup label="Threshold" value={threshold} min={0} max={255} onChange={setThreshold} />
+              <ControlGroup label="Pre-Blur" value={blur} min={0} max={20} onChange={setBlur} />
+              <ControlGroup label="Contrast" value={contrast} min={0} max={100} onChange={setContrast} />
+              <ControlGroup label="Midtones" value={midtones} min={0} max={100} onChange={setMidtones} />
+              <ControlGroup
+                label="Highlights"
+                value={highlights}
+                min={0}
+                max={100}
+                onChange={setHighlights}
+              />
+              <ControlGroup label="Bleed" value={bleed} min={0} max={100} onChange={setBleed} />
             </div>
 
-            <ControlGroup label="Threshold" value={threshold} min={0} max={255} onChange={setThreshold} />
-            <ControlGroup label="Pre-Blur" value={blur} min={0} max={20} onChange={setBlur} />
-            <ControlGroup label="Contrast" value={contrast} min={0} max={100} onChange={setContrast} />
-            <ControlGroup label="Midtones" value={midtones} min={0} max={100} onChange={setMidtones} />
-            <ControlGroup
-              label="Highlights"
-              value={highlights}
-              min={0}
-              max={100}
-              onChange={setHighlights}
-            />
-            <ControlGroup label="Bleed" value={bleed} min={0} max={100} onChange={setBleed} />
-            <ControlGroup label="Depth" value={depth} min={0} max={20} onChange={setDepth} />
-
-            {/* RESET */}
-            <button
-              onClick={handleReset}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded border border-red-500/50 bg-black/80 px-3 py-2 text-[11px] font-semibold text-red-300 hover:bg-red-500/10"
-            >
-              <RotateCcw size={12} /> Reset
-            </button>
-
-            <div className="mt-3 pb-2 text-center text-[9px] text-slate-600">
-              EX DITHERA • Minimal HUD
+            <div className="pb-2 text-center text-[8px] uppercase tracking-[0.3em] text-orange-700">
+              Super Terrain 86 • EX Dithera HUD
             </div>
           </div>
         </aside>
