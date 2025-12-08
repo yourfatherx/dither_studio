@@ -431,18 +431,18 @@ const applyPalette = (gray, colors) => {
 /* --------------------------- 4. MAIN APP ----------------------------- */
 
 export default function App() {
-  const [mediaType, setMediaType] = useState(null);
-  const [sourceUrl, setSourceUrl] = useState(null);
+  const [mediaType, setMediaType] = useState<null | 'image' | 'video'>(null);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
-  const [mediaDims, setMediaDims] = useState(null);
+  const [mediaDims, setMediaDims] = useState<{ w: number; h: number } | null>(null);
 
   const [scale, setScale] = useState(4);
   const [style, setStyle] = useState('Atkinson');
-  const [selectedCategory, setSelectedCategory] = useState('Error Diffusion');
+  const [selectedCategory, setSelectedCategory] = useState<keyof typeof ALGORITHM_CATEGORIES>('Error Diffusion');
 
-  const [paletteCategory, setPaletteCategory] = useState('CyberGB');
+  const [paletteCategory, setPaletteCategory] = useState<keyof typeof PALETTE_PRESETS>('CyberGB');
   const [paletteIdx, setPaletteIdx] = useState(0);
 
   const [contrast, setContrast] = useState(45);
@@ -456,13 +456,13 @@ export default function App() {
   const [depth, setDepth] = useState(0);
   const [invert, setInvert] = useState(false);
 
-  const canvasRef = useRef(null);
-  const hiddenVideoRef = useRef(null);
-  const hiddenImageRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const workspaceRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const recordedChunksRef = useRef([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const hiddenImageRef = useRef<HTMLImageElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   const availableStyles = useMemo(
     () => Object.keys(ALGORITHM_CATEGORIES[selectedCategory] || {}),
@@ -481,7 +481,7 @@ export default function App() {
     }
   }, [availableStyles, style]);
 
-  const handleFileUpload = (file) => {
+  const handleFileUpload = (file: File | null) => {
     if (!file) return;
     setIsPlaying(false);
     setIsRecording(false);
@@ -498,13 +498,13 @@ export default function App() {
     }
   };
 
-  const onFileInputChange = (e) => {
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     handleFileUpload(e.target.files?.[0] || null);
   };
 
   // auto-fit render size: no zoom scaling beyond workspace
   const computeRenderSize = useCallback(
-    (intrinsicW, intrinsicH) => {
+    (intrinsicW: number, intrinsicH: number) => {
       const workspace = workspaceRef.current;
       if (!workspace) return { w: intrinsicW, h: intrinsicH };
       const padding = 64;
@@ -525,7 +525,7 @@ export default function App() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    let srcW, srcH, source;
+    let srcW: number, srcH: number, source: HTMLVideoElement | HTMLImageElement | null;
 
     if (mediaType === 'video') {
       const video = hiddenVideoRef.current;
@@ -606,7 +606,7 @@ export default function App() {
     if (!video) return;
 
     if (isPlaying) {
-      let id;
+      let id: number;
       const loop = () => {
         processFrame();
         id = requestAnimationFrame(loop);
@@ -635,7 +635,7 @@ export default function App() {
     return () => window.removeEventListener('resize', onResize);
   }, [sourceUrl, processFrame]);
 
-  const handleDrop = (e) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     handleFileUpload(e.dataTransfer.files?.[0] || null);
   };
@@ -658,8 +658,8 @@ export default function App() {
     }
 
     const stream = canvas.captureStream(30);
-    let options = { mimeType: 'video/webm;codecs=vp9' };
-    if (!MediaRecorder.isTypeSupported(options.mimeType || '')) {
+    let options: MediaRecorderOptions = { mimeType: 'video/webm;codecs=vp9' };
+    if (!MediaRecorder.isTypeSupported(options.mimeType!)) {
       options = { mimeType: 'video/webm' };
     }
 
@@ -719,6 +719,12 @@ export default function App() {
     min,
     max,
     onChange,
+  }: {
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    onChange: (v: number) => void;
   }) => (
     <div className="mb-3">
       <div className="mb-1 flex justify-between text-[10px] tracking-[0.18em] uppercase">
@@ -876,7 +882,7 @@ export default function App() {
             <div className="ml-6 flex w-64 flex-col border border-orange-700/80 bg-black/90 px-3 py-2 text-[8px] leading-tight text-orange-500">
               <span>// EX-DITHERA SCRIPT FRAGMENT</span>
               <span>var city = landscape.chooseTerrain('dither')</span>
-              <span>for (var i = 0; i &lt; pixels; i++) {'{'} distributeError(); {'}'}</span>
+              <span>for (var i = 0; i &lt; pixels; i++) {{'{'}} distributeError(); {{'}'}}</span>
             </div>
           </div>
         </section>
@@ -968,7 +974,7 @@ export default function App() {
               </div>
               <select
                 value={selectedCategory}
-                onChange={e => setSelectedCategory(e.target.value)}
+                onChange={e => setSelectedCategory(e.target.value as keyof typeof ALGORITHM_CATEGORIES)}
                 className="mb-2 w-full border border-orange-800 bg-black/80 px-2 py-1 text-[10px] text-orange-200 outline-none focus:border-orange-400"
               >
                 {Object.keys(ALGORITHM_CATEGORIES).map(cat => (
@@ -1010,7 +1016,7 @@ export default function App() {
               <select
                 value={paletteCategory}
                 onChange={e => {
-                  setPaletteCategory(e.target.value);
+                  setPaletteCategory(e.target.value as keyof typeof PALETTE_PRESETS);
                   setPaletteIdx(0);
                 }}
                 className="mb-3 w-full border border-orange-800 bg-black/80 px-2 py-1 text-[10px] text-orange-200 outline-none focus:border-orange-400"
@@ -1078,3 +1084,4 @@ export default function App() {
     </div>
   );
 }
+
