@@ -17,7 +17,7 @@ import {
 
 /* ----------------------------- 1. CONFIG ----------------------------- */
 
-const ALGORITHM_CATEGORIES: Record<string, any> = {
+const ALGORITHM_CATEGORIES = {
   'Error Diffusion': {
     'Floyd-Steinberg': { divisor: 16, offsets: [[1, 0, 7], [-1, 1, 3], [0, 1, 5], [1, 1, 1]] },
     Atkinson: { divisor: 8, offsets: [[1, 0, 1], [2, 0, 1], [-1, 1, 1], [0, 1, 1], [1, 1, 1], [0, 2, 1]] },
@@ -128,7 +128,7 @@ const ALGORITHM_CATEGORIES: Record<string, any> = {
   },
 };
 
-const PALETTE_PRESETS: Record<string, string[][]> = {
+const PALETTE_PRESETS = {
   Halloween: [
     ['#050505', '#4a5d23', '#d2691e', '#e6e6fa'],
     ['#000000', '#ff6600', '#ffffff'],
@@ -170,7 +170,7 @@ const PALETTE_PRESETS: Record<string, string[][]> = {
 
 /* ---------------------------- 2. HELPERS ----------------------------- */
 
-const getBayerMatrix = (size: number): number[][] => {
+const getBayerMatrix = (size) => {
   if (size === 2) return [[0, 2], [3, 1]].map(r => r.map(v => v * 64));
   if (size === 4)
     return [
@@ -205,7 +205,7 @@ const getBayerMatrix = (size: number): number[][] => {
   return [[0]];
 };
 
-const getKnollMatrix = (): number[][] =>
+const getKnollMatrix = () =>
   [
     [6, 12, 10, 16],
     [8, 4, 14, 2],
@@ -213,7 +213,7 @@ const getKnollMatrix = (): number[][] =>
     [5, 7, 3, 1],
   ].map(r => r.map(v => v * 16));
 
-const generateBlueNoise = (w: number, h: number): Uint8ClampedArray => {
+const generateBlueNoise = (w, h) => {
   const noise = new Uint8ClampedArray(w * h);
   for (let i = 0; i < noise.length; i++) {
     const x = i % w;
@@ -223,28 +223,14 @@ const generateBlueNoise = (w: number, h: number): Uint8ClampedArray => {
   return noise;
 };
 
-const hexToRgb = (hex: string): [number, number, number] => {
+const hexToRgb = (hex) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [0, 0, 0];
 };
 
 /* ------------------------ 3. IMAGE PROCESSING ------------------------ */
 
-type Settings = {
-  scale: number;
-  style: string;
-  palette: [number, number, number][];
-  lineScale: number;
-  bleed: number;
-  contrast: number;
-  midtones: number;
-  highlights: number;
-  depth: number;
-  invert: boolean;
-  threshold: number;
-};
-
-const processImage = (imageData: ImageData, settings: Settings): ImageData => {
+const processImage = (imageData, settings) => {
   const { width, height, data } = imageData;
   const { scale, style, palette, lineScale, bleed, contrast, midtones, highlights, depth, invert, threshold } =
     settings;
@@ -254,7 +240,7 @@ const processImage = (imageData: ImageData, settings: Settings): ImageData => {
   const scaledH = Math.max(1, Math.floor(height / s));
   const gray = new Uint8ClampedArray(scaledW * scaledH);
 
-  // 1. grayscale + downscale
+  // grayscale + downscale
   for (let y = 0; y < scaledH; y++) {
     for (let x = 0; x < scaledW; x++) {
       const srcX = Math.floor(x * s);
@@ -290,15 +276,15 @@ const processImage = (imageData: ImageData, settings: Settings): ImageData => {
 };
 
 const applyAdjustments = (
-  gray: Uint8ClampedArray,
+  gray,
   {
     contrast,
     midtones,
     highlights,
     invert,
     threshold,
-  }: { contrast: number; midtones: number; highlights: number; invert: boolean; threshold: number },
-): Uint8ClampedArray => {
+  },
+) => {
   const adjusted = new Uint8ClampedArray(gray);
   const lut = new Uint8ClampedArray(256);
   const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
@@ -323,15 +309,15 @@ const applyAdjustments = (
 };
 
 const applyDither = (
-  gray: Uint8ClampedArray,
-  w: number,
-  h: number,
-  style: string,
-  lineScale: number,
-  bleed: number,
-): Uint8ClampedArray => {
-  let algo: any = null;
-  let category: string | null = null;
+  gray,
+  w,
+  h,
+  style,
+  lineScale,
+  bleed,
+) => {
+  let algo = null;
+  let category = null;
 
   for (const [cat, algos] of Object.entries(ALGORITHM_CATEGORIES)) {
     if (algos[style]) {
@@ -442,9 +428,9 @@ const applyDither = (
   return gray;
 };
 
-const applyOstromoukhov = (gray: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray => {
+const applyOstromoukhov = (gray, w, h) => {
   const pixels = new Float32Array(gray);
-  const getCoefficients = (val: number): [number, number, number] => {
+  const getCoefficients = (val) => {
     const v = val / 255;
     if (v < 0.25) return [13, 0, 5];
     if (v < 0.5) return [6, 13, 0];
@@ -470,11 +456,11 @@ const applyOstromoukhov = (gray: Uint8ClampedArray, w: number, h: number): Uint8
 };
 
 const applyRiemersma = (
-  gray: Uint8ClampedArray,
-  w: number,
-  h: number,
-  intensity: number,
-): Uint8ClampedArray => {
+  gray,
+  w,
+  h,
+  intensity,
+) => {
   const output = new Uint8ClampedArray(gray);
   const pixels = new Float32Array(gray);
   let error = 0;
@@ -494,7 +480,7 @@ const applyRiemersma = (
   return output;
 };
 
-const applyDepth = (dithered: Uint8ClampedArray, w: number, h: number, depth: number): Uint8ClampedArray => {
+const applyDepth = (dithered, w, h, depth) => {
   const output = new Uint8ClampedArray(dithered);
   const offset = Math.floor(depth);
   if (offset === 0) return dithered;
@@ -507,9 +493,9 @@ const applyDepth = (dithered: Uint8ClampedArray, w: number, h: number, depth: nu
 };
 
 const applyPalette = (
-  gray: Uint8ClampedArray,
-  colors: [number, number, number][],
-): Uint8ClampedArray => {
+  gray,
+  colors,
+) => {
   const output = new Uint8ClampedArray(gray.length * 3);
   const stops = Math.max(1, colors.length - 1);
   for (let i = 0; i < gray.length; i++) {
@@ -528,8 +514,8 @@ const applyPalette = (
 /* --------------------------- 4. MAIN APP ----------------------------- */
 
 export default function App() {
-  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
-  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState(null);
+  const [sourceUrl, setSourceUrl] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
@@ -554,14 +540,14 @@ export default function App() {
   const [depth, setDepth] = useState(0);
   const [invert, setInvert] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
-  const hiddenImageRef = useRef<HTMLImageElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
+  const canvasRef = useRef(null);
+  const hiddenVideoRef = useRef(null);
+  const hiddenImageRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const containerRef = useRef(null);
+  const animationFrameRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
 
   const availableStyles = useMemo(
     () => Object.keys(ALGORITHM_CATEGORIES[selectedCategory] || {}),
@@ -601,7 +587,7 @@ export default function App() {
     setZoom(Math.min(scaleX, scaleY));
   }, [mediaType]);
 
-  const handleFileUpload = (file: File | null) => {
+  const handleFileUpload = (file) => {
     if (!file) return;
     setIsPlaying(false);
     setIsRecording(false);
@@ -617,7 +603,7 @@ export default function App() {
     }
   };
 
-  const onFileInputChange: React.ChangeEventHandler<HTMLInputElement> = e => {
+  const onFileInputChange = (e) => {
     const file = e.target.files?.[0] || null;
     handleFileUpload(file);
   };
@@ -628,9 +614,9 @@ export default function App() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    let w: number;
-    let h: number;
-    let source: HTMLVideoElement | HTMLImageElement | null = null;
+    let w;
+    let h;
+    let source = null;
 
     if (mediaType === 'video') {
       const video = hiddenVideoRef.current;
@@ -641,8 +627,10 @@ export default function App() {
     } else {
       const img = hiddenImageRef.current;
       if (!img) return;
-      w = img.width;
-      h = img.height;
+
+      // IMPORTANT FIX: use naturalWidth / naturalHeight for hidden image
+      w = img.naturalWidth || img.width;
+      h = img.naturalHeight || img.height;
       source = img;
     }
 
@@ -719,7 +707,7 @@ export default function App() {
     }
   }, [mediaType, sourceUrl, isPlaying, processFrame]);
 
-  const handleDrop: React.DragEventHandler<HTMLDivElement> = e => {
+  const handleDrop = (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0] || null;
     handleFileUpload(file);
@@ -743,7 +731,7 @@ export default function App() {
     }
 
     const stream = canvas.captureStream(30);
-    let options: MediaRecorderOptions = { mimeType: 'video/webm;codecs=vp9' };
+    let options = { mimeType: 'video/webm;codecs=vp9' };
     if (!MediaRecorder.isTypeSupported(options.mimeType || '')) {
       options = { mimeType: 'video/webm' };
     }
@@ -797,15 +785,7 @@ export default function App() {
   const zoomIn = () => setZoom(z => Math.min(z * 1.15, 4));
   const zoomOut = () => setZoom(z => Math.max(z / 1.15, 0.25));
 
-  const ControlGroup: React.FC<{
-    label: string;
-    value: number;
-    min: number;
-    max: number;
-    onChange: (v: number) => void;
-    highlight?: boolean;
-    subLabel?: string;
-  }> = ({ label, value, min, max, onChange, highlight, subLabel }) => (
+  const ControlGroup = ({ label, value, min, max, onChange, highlight, subLabel }) => (
     <div className="mb-3">
       <div className="flex justify-between text-[11px] mb-1">
         <span className={highlight ? 'text-lime-400 font-semibold' : 'text-slate-400'}>{label}</span>
@@ -825,7 +805,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-black text-slate-200 selection:bg-lime-400 selection:text-black">
-      {/* HIDDEN MEDIA */}
+      {/* hidden media */}
       <img
         ref={hiddenImageRef}
         src={mediaType === 'image' ? sourceUrl ?? '' : ''}
@@ -849,10 +829,9 @@ export default function App() {
         }}
       />
 
-      {/* TOP BAR */}
+      {/* top bar */}
       <header className="relative z-20 flex h-14 items-center justify-between border-b border-lime-400/10 bg-gradient-to-r from-black via-slate-950/60 to-black px-6">
         <div className="flex items-center gap-4">
-          {/* EX DITHERA LOGO STYLE */}
           <div className="relative flex h-10 w-10 items-center justify-center rounded-md bg-lime-400/10 ring-1 ring-lime-300/40 shadow-[0_0_30px_rgba(190,242,100,0.6)]">
             <span className="text-xs font-black tracking-wider text-lime-300">EX</span>
             <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_center,#22c55e44,transparent_65%)]" />
@@ -867,7 +846,7 @@ export default function App() {
               </span>
             </div>
             <span className="mt-0.5 text-[11px] text-slate-500">
-              Adaptive error–diffusion lab for video & still frames.
+              Adaptive error–diffusion lab for video &amp; still frames.
             </span>
           </div>
         </div>
@@ -895,9 +874,9 @@ export default function App() {
         </div>
       </header>
 
-      {/* MAIN LAYOUT */}
+      {/* layout */}
       <main className="flex flex-1 overflow-hidden">
-        {/* LEFT STATUS PANEL */}
+        {/* left metrics */}
         <aside className="hidden w-64 flex-col border-r border-lime-400/10 bg-gradient-to-b from-black via-slate-950 to-black/90 px-4 py-4 lg:flex">
           <div className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-slate-500">
             Session Metrics
@@ -949,9 +928,9 @@ export default function App() {
           </div>
         </aside>
 
-        {/* CENTER VIEWPORT */}
+        {/* center viewport */}
         <section className="relative flex flex-1 flex-col bg-gradient-to-b from-black via-slate-950 to-black">
-          {/* EX DITHERA central glyph */}
+          {/* EX DITHERA glyph */}
           <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-4">
             <div className="flex flex-col items-center opacity-80">
               <span className="bg-gradient-to-r from-lime-300 via-lime-500 to-amber-300 bg-clip-text text-xs font-black tracking-[0.6em] text-transparent">
@@ -970,7 +949,6 @@ export default function App() {
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
           >
-            {/* canvas */}
             {sourceUrl ? (
               <div
                 style={{ transform: `scale(${zoom})` }}
@@ -989,10 +967,10 @@ export default function App() {
                   <Upload size={34} className="text-lime-300" />
                 </div>
                 <p className="text-xs font-semibold uppercase tracking-[0.4em] text-lime-300">
-                  DROP MEDIA
+                  Drop Media
                 </p>
                 <p className="mt-2 text-[11px] text-slate-500">
-                  Drag an image or video here, or click <span className="text-lime-300">IMPORT</span> in
+                  Drag an image or video here, or click <span className="text-lime-300">Import</span> in
                   the control rail.
                 </p>
                 <p className="mt-1 text-[10px] text-slate-600">
@@ -1001,7 +979,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ZOOM BAR */}
+            {/* zoom bar */}
             <div className="pointer-events-auto absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-lime-400/20 bg-black/80 px-3 py-1.5 text-[11px] text-slate-300 shadow-[0_0_30px_rgba(15,23,42,0.9)]">
               <button
                 onClick={zoomOut}
@@ -1029,12 +1007,12 @@ export default function App() {
                 className="ml-1 flex h-7 items-center gap-1 rounded-full bg-gradient-to-r from-lime-400/20 via-lime-500/20 to-emerald-400/20 px-2 text-[10px] font-semibold text-lime-200 ring-1 ring-lime-400/40 hover:from-lime-400/30 hover:via-lime-500/30 hover:to-emerald-400/30"
               >
                 <Maximize size={12} />
-                FIT
+                Fit
               </button>
             </div>
           </div>
 
-          {/* BOTTOM IMPORT / EXPORT STRIP (MOBILE ONLY) */}
+          {/* bottom mobile actions */}
           <div className="flex border-t border-lime-400/10 bg-black/80 px-4 py-3 text-[11px] lg:hidden">
             <div className="flex flex-1 items-center gap-2">
               <input
@@ -1079,7 +1057,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* RIGHT CONTROL RAIL */}
+        {/* right control rail */}
         <aside
           className={`z-20 flex w-80 flex-col border-l border-lime-400/10 bg-gradient-to-b from-black via-slate-950 to-black/90 transition-transform duration-300 ${
             showSettings ? 'translate-x-0' : 'translate-x-full'
@@ -1088,11 +1066,11 @@ export default function App() {
           <div className="flex items-center justify-between border-b border-lime-400/10 px-5 py-3 text-[11px] uppercase tracking-[0.2em] text-slate-500">
             <span>Control Rail</span>
             <span className="rounded-full bg-lime-500/10 px-2 py-0.5 text-[10px] font-semibold text-lime-300">
-              EX ENGINE
+              EX Engine
             </span>
           </div>
           <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto px-5 py-4">
-            {/* Import / Export */}
+            {/* import/export */}
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <input
                 ref={fileInputRef}
@@ -1141,7 +1119,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Dither Engine */}
+            {/* dither engine */}
             <div>
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-lime-300">
                 <Layers size={12} /> Dither Engine
@@ -1168,7 +1146,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Primary controls */}
+            {/* main controls */}
             <div className="space-y-1">
               <ControlGroup
                 label="Pixel Scale"
@@ -1189,7 +1167,7 @@ export default function App() {
               />
             </div>
 
-            {/* Palette */}
+            {/* palette */}
             <div>
               <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-lime-300">
                 <ImageIcon size={12} /> Color Pipeline
@@ -1228,7 +1206,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Adjustments */}
+            {/* tone shaping */}
             <div>
               <div className="mb-3 flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.2em] text-lime-300">
                 <span>Tone Shaping</span>
@@ -1294,7 +1272,7 @@ export default function App() {
               />
             </div>
 
-            {/* Reset */}
+            {/* reset */}
             <button
               onClick={handleReset}
               className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-black/80 px-3 py-2 text-[11px] font-semibold text-red-300 transition hover:bg-red-500/10"
