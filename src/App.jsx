@@ -240,7 +240,6 @@ const processImage = (imageData, settings) => {
   const scaledH = Math.max(1, Math.floor(height / s));
   const gray = new Uint8ClampedArray(scaledW * scaledH);
 
-  // grayscale + downscale
   for (let y = 0; y < scaledH; y++) {
     for (let x = 0; x < scaledW; x++) {
       const srcX = Math.floor(x * s);
@@ -519,7 +518,9 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
 
-  const [zoom, setZoom] = useState(1);
+  // zoom is split into "fit zoom" (auto) and "user zoom factor" (manual)
+  const fitZoomRef = useRef(1);
+  const [zoomFactor, setZoomFactor] = useState(1);
   const [showSettings, setShowSettings] = useState(true);
 
   const [scale, setScale] = useState(4);
@@ -566,26 +567,18 @@ export default function App() {
     }
   }, [availableStyles, style]);
 
-  const fitToScreen = useCallback(() => {
-    if (!containerRef.current) return;
-    let w = 800;
-    let h = 600;
-
-    if (mediaType === 'image' && hiddenImageRef.current) {
-      w = hiddenImageRef.current.naturalWidth || hiddenImageRef.current.width;
-      h = hiddenImageRef.current.naturalHeight || hiddenImageRef.current.height;
-    } else if (mediaType === 'video' && hiddenVideoRef.current) {
-      w = hiddenVideoRef.current.videoWidth;
-      h = hiddenVideoRef.current.videoHeight;
-    }
-
-    if (!w || !h) return;
-
+  const computeFitZoom = useCallback((mediaW, mediaH) => {
+    if (!containerRef.current || !mediaW || !mediaH) return;
     const { clientWidth, clientHeight } = containerRef.current;
-    const scaleX = (clientWidth * 0.9) / w;
-    const scaleY = (clientHeight * 0.9) / h;
-    setZoom(Math.min(scaleX, scaleY));
-  }, [mediaType]);
+    // small padding inside viewport
+    const usableW = clientWidth * 0.9;
+    const usableH = clientHeight * 0.9;
+    const scaleX = usableW / mediaW;
+    const scaleY = usableH / mediaH;
+    const fitZoom = Math.min(scaleX, scaleY, 1); // never upscale by default
+    fitZoomRef.current = fitZoom > 0 ? fitZoom : 1;
+    setZoomFactor(1); // reset manual zoom for new media
+  }, []);
 
   const handleFileUpload = (file) => {
     if (!file) return;
@@ -627,8 +620,6 @@ export default function App() {
     } else {
       const img = hiddenImageRef.current;
       if (!img) return;
-
-      // IMPORTANT FIX: use naturalWidth / naturalHeight for hidden image
       w = img.naturalWidth || img.width;
       h = img.naturalHeight || img.height;
       source = img;
@@ -707,6 +698,14 @@ export default function App() {
     }
   }, [mediaType, sourceUrl, isPlaying, processFrame]);
 
+  // clean up rAF on unmount
+  useEffect(
+    () => () => {
+      if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
+    },
+    [],
+  );
+
   const handleDrop = (e) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0] || null;
@@ -780,14 +779,26 @@ export default function App() {
     setMidtones(50);
     setHighlights(50);
     setLineScale(4);
+    setZoomFactor(1);
+    fitZoomRef.current = 1;
   };
 
-  const zoomIn = () => setZoom(z => Math.min(z * 1.15, 4));
-  const zoomOut = () => setZoom(z => Math.max(z / 1.15, 0.25));
+  const adjustZoom = (multiplier) => {
+    setZoomFactor(z => {
+      const next = z * multiplier;
+      // clamp manual zoom so total zoom never gets ridiculous
+      const clamped = Math.min(2.5, Math.max(0.5, next));
+      return clamped;
+    });
+  };
+
+  const zoomIn = () => adjustZoom(1.15);
+  const zoomOut = () => adjustZoom(1 / 1.15);
+  const displayZoom = fitZoomRef.current * zoomFactor;
 
   const ControlGroup = ({ label, value, min, max, onChange, highlight, subLabel }) => (
     <div className="mb-3">
-      <div className="flex justify-between text-[11px] mb-1">
+      <div className="mb-1 flex justify-between text-[11px]">
         <span className={highlight ? 'text-lime-400 font-semibold' : 'text-slate-400'}>{label}</span>
         <span className="font-mono text-slate-500">{value}</span>
       </div>
@@ -797,21 +808,22 @@ export default function App() {
         max={max}
         value={value}
         onChange={e => onChange(Number(e.target.value))}
-        className="w-full h-1 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-lime-400"
+        className="h-1 w-full cursor-pointer appearance-none rounded-lg bg-slate-900 accent-lime-400"
       />
-      {subLabel && <div className="text-[10px] text-slate-500 mt-1">{subLabel}</div>}
+      {subLabel && <div className="mt-1 text-[10px] text-slate-500">{subLabel}</div>}
     </div>
   );
 
   return (
     <div className="flex h-screen flex-col bg-black text-slate-200 selection:bg-lime-400 selection:text-black">
-      {/* hidden media */}
+      {/* hidden media sources */}
       <img
         ref={hiddenImageRef}
         src={mediaType === 'image' ? sourceUrl ?? '' : ''}
         className="hidden"
-        onLoad={() => {
-          fitToScreen();
+        onLoad={e => {
+          const img = e.currentTarget;
+          computeFitZoom(img.naturalWidth, img.naturalHeight);
           processFrame();
         }}
         alt="source"
@@ -823,8 +835,9 @@ export default function App() {
         loop
         muted
         playsInline
-        onLoadedMetadata={() => {
-          fitToScreen();
+        onLoadedMetadata={e => {
+          const video = e.currentTarget;
+          computeFitZoom(video.videoWidth, video.videoHeight);
           if (isPlaying) processFrame();
         }}
       />
@@ -950,15 +963,17 @@ export default function App() {
             onDrop={handleDrop}
           >
             {sourceUrl ? (
-              <div
-                style={{ transform: `scale(${zoom})` }}
-                className="relative origin-center rounded-2xl border border-lime-400/20 bg-black/80 shadow-[0_0_45px_rgba(190,242,100,0.25)] transition-transform duration-150"
-              >
-                <canvas
-                  ref={canvasRef}
-                  style={{ imageRendering: 'pixelated', display: 'block' }}
-                  className="rounded-2xl"
-                />
+              <div className="relative max-h-full max-w-full overflow-hidden rounded-2xl border border-lime-400/20 bg-black/80 shadow-[0_0_45px_rgba(190,242,100,0.25)]">
+                <div
+                  style={{ transform: `scale(${displayZoom})` }}
+                  className="origin-center"
+                >
+                  <canvas
+                    ref={canvasRef}
+                    style={{ imageRendering: 'pixelated', display: 'block' }}
+                    className="rounded-2xl"
+                  />
+                </div>
                 <div className="pointer-events-none absolute inset-0 rounded-2xl border border-lime-300/10 shadow-[inset_0_0_60px_rgba(15,23,42,0.8)]" />
               </div>
             ) : (
@@ -983,28 +998,38 @@ export default function App() {
             <div className="pointer-events-auto absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-lime-400/20 bg-black/80 px-3 py-1.5 text-[11px] text-slate-300 shadow-[0_0_30px_rgba(15,23,42,0.9)]">
               <button
                 onClick={zoomOut}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-300 transition hover:bg-lime-400/20 hover:text-lime-300"
+                disabled={!sourceUrl}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-lime-400/20 hover:text-lime-300 disabled:opacity-40"
               >
                 <ZoomOut size={14} />
               </button>
               <div className="mx-1 flex items-center gap-2">
-                <span className="font-mono text-slate-400">{(zoom * 100).toFixed(0)}%</span>
+                <span className="font-mono text-slate-400">
+                  {sourceUrl ? (displayZoom * 100).toFixed(0) : '--'}%
+                </span>
                 <span className="h-1 w-20 overflow-hidden rounded-full bg-slate-900">
                   <span
                     className="block h-full bg-gradient-to-r from-lime-300 via-lime-500 to-emerald-400"
-                    style={{ width: `${Math.min(100, Math.max(zoom * 100, 5))}%` }}
+                    style={{ width: sourceUrl ? `${Math.min(100, Math.max(displayZoom * 100, 5))}%` : '0%' }}
                   />
                 </span>
               </div>
               <button
                 onClick={zoomIn}
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-300 transition hover:bg-lime-400/20 hover:text-lime-300"
+                disabled={!sourceUrl}
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-lime-400/20 hover:text-lime-300 disabled:opacity-40"
               >
                 <ZoomIn size={14} />
               </button>
               <button
-                onClick={fitToScreen}
-                className="ml-1 flex h-7 items-center gap-1 rounded-full bg-gradient-to-r from-lime-400/20 via-lime-500/20 to-emerald-400/20 px-2 text-[10px] font-semibold text-lime-200 ring-1 ring-lime-400/40 hover:from-lime-400/30 hover:via-lime-500/30 hover:to-emerald-400/30"
+                onClick={() => {
+                  if (!canvasRef.current) return;
+                  const w = canvasRef.current.width || 1;
+                  const h = canvasRef.current.height || 1;
+                  computeFitZoom(w, h);
+                }}
+                disabled={!sourceUrl}
+                className="ml-1 flex h-7 items-center gap-1 rounded-full bg-gradient-to-r from-lime-400/20 via-lime-500/20 to-emerald-400/20 px-2 text-[10px] font-semibold text-lime-200 ring-1 ring-lime-400/40 hover:from-lime-400/30 hover:via-lime-500/30 hover:to-emerald-400/30 disabled:opacity-40"
               >
                 <Maximize size={12} />
                 Fit
@@ -1012,7 +1037,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* bottom mobile actions */}
+          {/* bottom mobile import/export */}
           <div className="flex border-t border-lime-400/10 bg-black/80 px-4 py-3 text-[11px] lg:hidden">
             <div className="flex flex-1 items-center gap-2">
               <input
