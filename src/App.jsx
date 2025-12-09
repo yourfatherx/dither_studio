@@ -95,71 +95,11 @@ const PALETTE_PRESETS = {
     ['#000000', '#9bbc0f', '#e5ff8a'],
   ],
   Print: [['#000000', '#00ffff', '#ff00ff', '#ffff00', '#ffffff']],
-
-  /* 80s SUNSET DISKS (first reference image) */
-  '80s Sunsets I': [
-    ['#f5f9ff', '#8ad3ff', '#ffc56b', '#b4522f'],
-    ['#fce9b1', '#ff9b3d', '#ff4b6c', '#432142'],
-    ['#e2f2ff', '#8fd2ff', '#c38bff', '#412a6d'],
-    ['#f5f4f0', '#c9c8d2', '#f3b36a', '#7b422d'],
-    ['#e4f5ff', '#8fb9ff', '#3c5dd7', '#050923'],
-    ['#e5fbff', '#8fd4ff', '#ffb86c', '#7f2a37'],
-    ['#e5f2ff', '#9cd3ff', '#8d79ff', '#382666'],
-    ['#f9f1de', '#f0c679', '#f26d3e', '#3b1416'],
-    ['#f6f3ff', '#bd9cff', '#201733', '#05040c'],
-    ['#fbe9d9', '#ffba62', '#ff5f7a', '#5c2a54'],
-  ],
-
-  /* NEON DISKS (second reference image) */
-  'Neon Disks': [
-    ['#0dd4ff', '#ff3b7f', '#ff7b3b'],
-    ['#ff8765', '#ff3b46', '#a3147f'],
-    ['#ff6fd5', '#ff3b7b', '#ffae3b'],
-    ['#ff9c38', '#ff4338', '#ff007a'],
-    ['#ff8ef7', '#ff4eb7', '#4a36ff'],
-    ['#28ffc8', '#00b6ff', '#2739ff'],
-    ['#00e2ff', '#007dfa', '#281b7f'],
-    ['#c28dff', '#7d4cff', '#2f154f'],
-    ['#00ffb2', '#00b4ff', '#7b3bff'],
-    ['#ffb36b', '#ff6b4b', '#7b2bff'],
-  ],
-
-  /* HORIZON STRIPES (third reference image) */
-  'Horizon Stripes': [
-    ['#00191f', '#005f4d', '#ff8a3b', '#ffd849', '#f6f4f2'],
-    ['#000424', '#001e5f', '#234aff', '#fdf5ff'],
-    ['#0a0a24', '#0060a8', '#ffc14f', '#ffeedd'],
-    ['#004451', '#00a5cb', '#fce386', '#ffffff'],
-    ['#00091d', '#003d82', '#ff8c6d', '#fff7ea'],
-    ['#000010', '#0c1f50', '#ee4038', '#ffaf4f'],
-    ['#04051f', '#001a4d', '#003f96', '#ffdf6d'],
-    ['#000000', '#1f0010', '#ff4333', '#ffc14f', '#fff8e6'],
-    ['#05081f', '#001e3d', '#00629c', '#00ffd4'],
-    ['#000013', '#201949', '#ff6a4f', '#f5f3ff'],
-    ['#00020b', '#004475', '#ff831e', '#fff5e3'],
-    ['#050812', '#00233d', '#004f7b', '#f2d770', '#ffffff'],
-  ],
-
-  /* CONSTELLATION BARS (fourth reference image) */
-  'Constellation Bars': [
-    ['#ff3700', '#ff8e00', '#ffe94a', '#f7f0ff'],
-    ['#00f0ff', '#00c47b', '#006b52', '#001611'],
-    ['#0039ff', '#2ac7ff', '#78ffeb', '#f5fff9'],
-    ['#ff42c0', '#ff8fd7', '#ffe2ff', '#f7f7ff'],
-    ['#f7a000', '#ffcf54', '#ffeab3', '#fffdf8'],
-    ['#d2e5ff', '#88bfff', '#4a7dff', '#02081c'],
-    ['#006bff', '#00a6ff', '#ffb347', '#ffe8c2'],
-    ['#5c17ff', '#a64bff', '#ff5cd6', '#fff0ff'],
-    ['#ff9934', '#ffcf4a', '#ffe7a8', '#ffffff'],
-    ['#7f80ff', '#a49fff', '#e3e0ff', '#ffffff'],
-    ['#004dff', '#00b3ff', '#00ffe6', '#f5ffff'],
-    ['#00ffc8', '#00b6ff', '#5a64ff', '#100015'],
-  ],
 };
 
 /* ---------------------------- 2. HELPERS ----------------------------- */
 
-const getBayerMatrix = (size) => {
+const getBayerMatrix = size => {
   if (size === 2) return [[0, 2], [3, 1]].map(r => r.map(v => v * 64));
   if (size === 4)
     return [
@@ -212,11 +152,21 @@ const generateBlueNoise = (w, h) => {
   return noise;
 };
 
-const hexToRgb = (hex) => {
+const hexToRgb = hex => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
     ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
     : [0, 0, 0];
+};
+
+/* Quantize a grayscale value (0–255) into N discrete levels, return quantized 0–255 */
+const quantizeToLevels = (val, levels) => {
+  const L = Math.max(2, levels | 0);
+  const clamped = Math.max(0, Math.min(255, val));
+  const scaled = (clamped / 255) * (L - 1);
+  const idx = Math.round(scaled);
+  const qVal = (idx / (L - 1)) * 255;
+  return qVal;
 };
 
 /* ------------------------ 3. IMAGE PROCESSING ------------------------ */
@@ -254,7 +204,8 @@ const processImage = (imageData, settings) => {
   }
 
   const adjusted = applyAdjustments(gray, { contrast, midtones, highlights, invert, threshold });
-  let dithered = applyDither(adjusted, scaledW, scaledH, style, lineScale, bleed);
+  const levels = Math.max(2, palette.length || 2);
+  let dithered = applyDither(adjusted, scaledW, scaledH, style, lineScale, bleed, levels);
   if (depth > 0) dithered = applyDepth(dithered, scaledW, scaledH, depth);
   const colored = applyPalette(dithered, palette);
 
@@ -276,10 +227,7 @@ const processImage = (imageData, settings) => {
   return output;
 };
 
-const applyAdjustments = (
-  gray,
-  { contrast, midtones, highlights, invert, threshold },
-) => {
+const applyAdjustments = (gray, { contrast, midtones, highlights, invert, threshold }) => {
   const adjusted = new Uint8ClampedArray(gray);
   const lut = new Uint8ClampedArray(256);
   const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
@@ -303,14 +251,7 @@ const applyAdjustments = (
   return adjusted;
 };
 
-const applyDither = (
-  gray,
-  w,
-  h,
-  style,
-  lineScale,
-  bleed,
-) => {
+const applyDither = (gray, w, h, style, lineScale, bleed, levels) => {
   let algo = null;
   let category = null;
 
@@ -323,8 +264,10 @@ const applyDither = (
   }
   if (!algo || !category) return gray;
 
+  const L = Math.max(2, levels | 0);
+
   if (category === 'Error Diffusion') {
-    if (algo.type === 'variable') return applyOstromoukhov(gray, w, h);
+    if (algo.type === 'variable') return applyOstromoukhov(gray, w, h, L);
     const pixels = new Float32Array(gray);
     const { divisor, offsets } = algo;
     const bleedFactor = 0.5 + bleed / 100;
@@ -333,7 +276,7 @@ const applyDither = (
       for (let x = 0; x < w; x++) {
         const idx = y * w + x;
         const oldVal = pixels[idx];
-        const newVal = oldVal > 127 ? 255 : 0;
+        const newVal = quantizeToLevels(oldVal, L);
         pixels[idx] = newVal;
         const err = (oldVal - newVal) * bleedFactor;
         for (const [dx, dy, weight] of offsets) {
@@ -357,14 +300,17 @@ const applyDither = (
     for (let i = 0; i < w * h; i++) {
       const x = i % w;
       const y = Math.floor(i / w);
-      let t = 127;
-      if (isMatrix && matrix) t = matrix[y % size][x % size];
-      else {
-        if (algo === 'hlines') t = y % lineScale < lineScale / 2 ? 20 : 230;
-        else if (algo === 'vlines') t = x % lineScale < lineScale / 2 ? 20 : 230;
-        else if (algo === 'dlines') t = (x + y) % lineScale < lineScale / 2 ? 20 : 230;
+      let jitter = 0;
+      if (isMatrix && matrix) {
+        const t = matrix[y % size][x % size]; // 0–255
+        jitter = (t - 127) * 0.6;
+      } else {
+        if (algo === 'hlines') jitter = (y % lineScale < lineScale / 2 ? -60 : 60);
+        else if (algo === 'vlines') jitter = (x % lineScale < lineScale / 2 ? -60 : 60);
+        else if (algo === 'dlines') jitter = ((x + y) % lineScale < lineScale / 2 ? -60 : 60);
       }
-      output[i] = gray[i] > t ? 255 : 0;
+      const g = Math.max(0, Math.min(255, gray[i] + jitter));
+      output[i] = quantizeToLevels(g, L);
     }
     return output;
   }
@@ -373,17 +319,30 @@ const applyDither = (
     const output = new Uint8ClampedArray(w * h);
     if (algo === 'bluenoise') {
       const noise = generateBlueNoise(w, h);
-      for (let i = 0; i < gray.length; i++) output[i] = gray[i] > noise[i] ? 255 : 0;
+      for (let i = 0; i < gray.length; i++) {
+        const jitter = (noise[i] - 127) * 0.7;
+        const g = Math.max(0, Math.min(255, gray[i] + jitter));
+        output[i] = quantizeToLevels(g, L);
+      }
     } else if (algo === 'whitenoise') {
-      for (let i = 0; i < gray.length; i++) output[i] = gray[i] > Math.random() * 255 ? 255 : 0;
+      for (let i = 0; i < gray.length; i++) {
+        const jitter = (Math.random() * 255 - 127) * 0.7;
+        const g = Math.max(0, Math.min(255, gray[i] + jitter));
+        output[i] = quantizeToLevels(g, L);
+      }
     } else {
-      for (let i = 0; i < gray.length; i++) output[i] = Math.random() > gray[i] / 255 ? 255 : 0;
+      // simple random/stipple placeholder
+      for (let i = 0; i < gray.length; i++) {
+        const jitter = (Math.random() - 0.5) * 120;
+        const g = Math.max(0, Math.min(255, gray[i] + jitter));
+        output[i] = quantizeToLevels(g, L);
+      }
     }
     return output;
   }
 
   if (category === 'Modulation') {
-    if (algo === 'riemersma') return applyRiemersma(gray, w, h, lineScale);
+    if (algo === 'riemersma') return applyRiemersma(gray, w, h, lineScale, L);
     const output = new Uint8ClampedArray(w * h);
     const { axis, wave } = algo;
     for (let y = 0; y < h; y++) {
@@ -391,15 +350,19 @@ const applyDither = (
         let t = 127;
         const val = lineScale < 1 ? 1 : lineScale;
         if (axis === 'x') {
-          t = wave === 'sine' ? 127.5 + 127.5 * Math.sin((x * val) / 10) : (Math.floor(x / val) % 2) * 255;
+          if (wave === 'sine')
+            t = 127.5 + 127.5 * Math.sin((x * val) / 10);
+          else
+            t = (Math.floor(x / val) % 2) * 255;
         } else if (axis === 'y') {
           t = 127.5 + 127.5 * Math.sin((y * val) / 10);
         } else if (axis === 'radial') {
           const dist = Math.sqrt((x - w / 2) ** 2 + (y - h / 2) ** 2);
           t = 127.5 + 127.5 * Math.sin((dist * val) / 10);
         }
-        const idx = y * w + x;
-        output[idx] = gray[idx] > t ? 255 : 0;
+        const jitter = (t - 127) * 0.8;
+        const g = Math.max(0, Math.min(255, gray[y * w + x] + jitter));
+        output[y * w + x] = quantizeToLevels(g, L);
       }
     }
     return output;
@@ -410,12 +373,14 @@ const applyDither = (
     for (let i = 0; i < w * h; i++) {
       const x = i % w;
       const y = Math.floor(i / w);
-      let k = true;
-      if (algo === 'checker') k = (x + y) % 2 === 0;
-      else if (algo === 'grid') k = x % lineScale === 0 || y % lineScale === 0;
-      else if (algo === 'random') k = Math.random() > 0.5;
-      else if (algo === 'gradient') k = gray[i] > ((x * y) % 255);
-      output[i] = k ? (gray[i] > 127 ? 255 : 0) : gray[i] > 200 ? 255 : 0;
+      let factor = 1;
+      if (algo === 'checker') factor = (x + y) % 2 === 0 ? 1.1 : 0.9;
+      else if (algo === 'grid') factor = (x % lineScale === 0 || y % lineScale === 0) ? 1.2 : 0.9;
+      else if (algo === 'random') factor = Math.random() > 0.5 ? 1.2 : 0.8;
+      else if (algo === 'gradient') factor = gray[i] > ((x * y) % 255) ? 1.1 : 0.9;
+
+      const g = Math.max(0, Math.min(255, gray[i] * factor));
+      output[i] = quantizeToLevels(g, L);
     }
     return output;
   }
@@ -423,9 +388,11 @@ const applyDither = (
   return gray;
 };
 
-const applyOstromoukhov = (gray, w, h) => {
+const applyOstromoukhov = (gray, w, h, levels) => {
   const pixels = new Float32Array(gray);
-  const getCoefficients = (val) => {
+  const L = Math.max(2, levels | 0);
+
+  const getCoefficients = val => {
     const v = val / 255;
     if (v < 0.25) return [13, 0, 5];
     if (v < 0.5) return [6, 13, 0];
@@ -437,7 +404,7 @@ const applyOstromoukhov = (gray, w, h) => {
     for (let x = 0; x < w; x++) {
       const idx = y * w + x;
       const oldVal = pixels[idx];
-      const newVal = oldVal > 127 ? 255 : 0;
+      const newVal = quantizeToLevels(oldVal, L);
       pixels[idx] = newVal;
       const err = oldVal - newVal;
       const [c1, c2, c3] = getCoefficients(oldVal);
@@ -450,11 +417,12 @@ const applyOstromoukhov = (gray, w, h) => {
   return Uint8ClampedArray.from(pixels.map(v => Math.max(0, Math.min(255, v))));
 };
 
-const applyRiemersma = (gray, w, h, intensity) => {
+const applyRiemersma = (gray, w, h, intensity, levels) => {
   const output = new Uint8ClampedArray(gray);
   const pixels = new Float32Array(gray);
   let error = 0;
   const damping = Math.max(0.1, Math.min(0.9, intensity / 20));
+  const L = Math.max(2, levels | 0);
 
   for (let y = 0; y < h; y++) {
     const isEven = y % 2 === 0;
@@ -462,7 +430,7 @@ const applyRiemersma = (gray, w, h, intensity) => {
       const realX = isEven ? x : w - 1 - x;
       const idx = y * w + realX;
       const val = pixels[idx] + error;
-      const out = val > 127 ? 255 : 0;
+      const out = quantizeToLevels(val, L);
       output[idx] = out;
       error = (val - out) * damping;
     }
@@ -476,7 +444,7 @@ const applyDepth = (dithered, w, h, depth) => {
   if (offset === 0) return dithered;
   for (let y = 0; y < h; y++) {
     for (let x = offset; x < w; x++) {
-      if (dithered[y * w + x] === 0) output[y * w + (x - offset)] = 0;
+      if (dithered[y * w + x] < 255) output[y * w + (x - offset)] = dithered[y * w + x];
     }
   }
   return output;
@@ -514,11 +482,6 @@ export default function App() {
 
   const [paletteCategory, setPaletteCategory] = useState('CyberGB');
   const [paletteIdx, setPaletteIdx] = useState(0);
-  const [customStops, setCustomStops] = useState([
-    '#ff9a3c',
-    '#ff4b6c',
-    '#4a36ff',
-  ]);
 
   const [contrast, setContrast] = useState(45);
   const [midtones, setMidtones] = useState(50);
@@ -545,14 +508,10 @@ export default function App() {
   );
 
   const currentPalette = useMemo(() => {
-    if (paletteCategory === 'Custom') {
-      const raw = (customStops.length ? customStops : ['#ffffff', '#000000']);
-      return raw.map(hexToRgb);
-    }
     const cat = PALETTE_PRESETS[paletteCategory] || PALETTE_PRESETS.CyberGB;
     const raw = cat[paletteIdx] || cat[0];
     return raw.map(hexToRgb);
-  }, [paletteCategory, paletteIdx, customStops]);
+  }, [paletteCategory, paletteIdx]);
 
   useEffect(() => {
     if (availableStyles.length > 0 && !availableStyles.includes(style)) {
@@ -560,7 +519,7 @@ export default function App() {
     }
   }, [availableStyles, style]);
 
-  const handleFileUpload = (file) => {
+  const handleFileUpload = file => {
     if (!file) return;
     setIsPlaying(false);
     setIsRecording(false);
@@ -577,7 +536,7 @@ export default function App() {
     }
   };
 
-  const onFileInputChange = (e) => {
+  const onFileInputChange = e => {
     handleFileUpload(e.target.files?.[0] || null);
   };
 
@@ -715,7 +674,7 @@ export default function App() {
     return () => window.removeEventListener('resize', onResize);
   }, [sourceUrl, processFrame]);
 
-  const handleDrop = (e) => {
+  const handleDrop = e => {
     e.preventDefault();
     handleFileUpload(e.dataTransfer.files?.[0] || null);
   };
@@ -784,7 +743,6 @@ export default function App() {
     setStyle('Atkinson');
     setPaletteCategory('CyberGB');
     setPaletteIdx(0);
-    setCustomStops(['#ff9a3c', '#ff4b6c', '#4a36ff']);
     setMidtones(50);
     setHighlights(50);
     setLineScale(4);
@@ -792,23 +750,6 @@ export default function App() {
 
   const togglePlayback = () => {
     if (mediaType === 'video') setIsPlaying(p => !p);
-  };
-
-  const paletteNames = [...Object.keys(PALETTE_PRESETS), 'Custom'];
-
-  const updateCustomStop = (index, color) => {
-    setCustomStops(stops => stops.map((c, i) => (i === index ? color : c)));
-  };
-
-  const addCustomStop = () => {
-    setCustomStops(stops => [...stops, '#ffffff']);
-  };
-
-  const removeCustomStop = (index) => {
-    setCustomStops(stops => {
-      if (stops.length <= 2) return stops; // keep at least two stops
-      return stops.filter((_, i) => i !== index);
-    });
   };
 
   const ControlGroup = ({
@@ -833,6 +774,8 @@ export default function App() {
       />
     </div>
   );
+
+  const paletteNames = Object.keys(PALETTE_PRESETS);
 
   return (
     <div className="h-screen bg-black text-orange-300 font-mono">
@@ -1091,8 +1034,7 @@ export default function App() {
                 <select
                   value={paletteCategory}
                   onChange={e => {
-                    const value = e.target.value;
-                    setPaletteCategory(value);
+                    setPaletteCategory(e.target.value);
                     setPaletteIdx(0);
                   }}
                   className="mb-2 w-full border border-orange-700 bg-black px-2 py-1 text-[9px] text-orange-200 outline-none"
@@ -1101,65 +1043,25 @@ export default function App() {
                     <option key={p}>{p}</option>
                   ))}
                 </select>
-
-                {/* Preset palettes */}
-                {paletteCategory !== 'Custom' && (
-                  <div className="mb-3 space-y-2">
-                    {(PALETTE_PRESETS[paletteCategory] || []).map((pal, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setPaletteIdx(idx)}
-                        className={`relative flex h-7 w-full overflow-hidden border ${
-                          paletteIdx === idx
-                            ? 'border-orange-400'
-                            : 'border-orange-700'
-                        }`}
-                      >
-                        <div className="absolute inset-0 flex">
-                          {pal.map((c, i) => (
-                            <div key={i} style={{ background: c }} className="flex-1" />
-                          ))}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Custom palette editor */}
-                {paletteCategory === 'Custom' && (
-                  <div className="mb-3 space-y-2">
-                    {customStops.map((color, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between gap-2 border border-orange-700 px-2 py-1"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-[8px]">Stop {idx + 1}</span>
-                          <input
-                            type="color"
-                            value={color}
-                            onChange={e => updateCustomStop(idx, e.target.value)}
-                            className="h-6 w-10 cursor-pointer border border-orange-500 bg-transparent"
-                          />
-                        </div>
-                        {customStops.length > 2 && (
-                          <button
-                            onClick={() => removeCustomStop(idx)}
-                            className="text-[8px] text-orange-500"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                <div className="mb-3 space-y-2">
+                  {(PALETTE_PRESETS[paletteCategory] || []).map((pal, idx) => (
                     <button
-                      onClick={addCustomStop}
-                      className="mt-1 w-full border border-orange-600 px-2 py-1 text-[8px]"
+                      key={idx}
+                      onClick={() => setPaletteIdx(idx)}
+                      className={`relative flex h-7 w-full overflow-hidden border ${
+                        paletteIdx === idx
+                          ? 'border-orange-400'
+                          : 'border-orange-700'
+                      }`}
                     >
-                      + Add Stop
+                      <div className="absolute inset-0 flex">
+                        {pal.map((c, i) => (
+                          <div key={i} style={{ background: c }} className="flex-1" />
+                        ))}
+                      </div>
                     </button>
-                  </div>
-                )}
+                  ))}
+                </div>
 
                 <ControlGroup
                   label="Contrast"
@@ -1223,7 +1125,7 @@ export default function App() {
           </div>
           <div className="ml-4 flex flex-col border border-orange-600 px-4 py-2 text-[7px] leading-tight text-orange-500">
             <span>// DITHER SCRIPT</span>
-            <span>var ALGORITHM = dither.chooseAlgorithm('glitch');</span>
+            <span>var ALGORITHM = dither.choosealgorithm('glitch');</span>
             <span>for (var i = 0; i &lt; pixels; i++) {'{'} diffuseError(); {'}'}</span>
           </div>
         </footer>
